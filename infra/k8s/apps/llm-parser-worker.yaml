@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-parser-worker
+  namespace: ozpropertyreport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-parser-worker
+  template:
+    metadata:
+      labels:
+        app: llm-parser-worker
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: llm-parser-worker
+          image: ${REGISTRY}/ozpr-llm-parser-worker:${IMAGE_TAG}
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: ozpr-secrets
+            - configMapRef:
+                name: ozpr-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ozpr-secrets
+                  key: DATABASE_URL_SYNC
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

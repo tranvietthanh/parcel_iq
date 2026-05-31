@@ -1,0 +1,93 @@
+# Infrastructure only — no application code in here.
+# Application services run natively for hot reload.
+# See: docs/09-local-dev.md
+
+services:
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Enable pg_stat_statements via shared_preload_libraries
+    command: >
+      postgres
+        -c shared_preload_libraries=pg_stat_statements
+        -c pg_stat_statements.track=all
+        -c auto_explain.log_min_duration=100
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  flower:
+    image: mher/flower:2.0
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      FLOWER_PORT: ${FLOWER_PORT:-5555}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@parceliq.dev
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-devpassword}
+      PGADMIN_CONFIG_ENHANCED_PASSWORD_VALIDATION: "False"
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 10
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/misc/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  pgadmin_data:

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-web
+  namespace: ozpropertyreport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: public-web
+  template:
+    metadata:
+      labels:
+        app: public-web
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: public-web
+          image: ${REGISTRY}/ozpr-public-web:${IMAGE_TAG}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: INTERNAL_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: ozpr-config
+                  key: INTERNAL_API_URL
+            # Map public Clerk keys → app-expected env var names
+            # (envFrom loads all secrets, but these explicit entries take precedence)
+            - name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ozpr-secrets
+                  key: CLERK_PUBLIC_PUBLISHABLE_KEY
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ozpr-secrets
+                  key: CLERK_PUBLIC_SECRET_KEY
+            # Feature flags → NEXT_PUBLIC_ env vars (baked at build time)
+            - name: NEXT_PUBLIC_CREDIT_PURCHASE_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: ozpr-config
+                  key: CREDIT_PURCHASE_ENABLED
+          envFrom:
+            - secretRef:
+                name: ozpr-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-web
+  namespace: ozpropertyreport
+spec:
+  type: ClusterIP
+  selector:
+    app: public-web
+  ports:
+    - port: 3000
+      targetPort: 3000

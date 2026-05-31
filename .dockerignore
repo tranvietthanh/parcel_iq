@@ -1,0 +1,23 @@
+# Docker build context exclusions (for repo-root builds)
+# These directories are large and never needed inside images.
+
+**/node_modules/
+**/.next/
+**/.venv/
+**/__pycache__/
+**/.git/
+**/.turbo/
+**/dist/
+**/out/
+**/htmlcov/
+**/test-results/
+**/playwright-report/
+**/*.tsbuildinfo
+
+data/
+minio_data/
+openspec/
+docs/
+.env
+.env.local
+.env.*.local

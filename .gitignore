@@ -1,0 +1,67 @@
+# =============================================================================
+# ParcelIQ .gitignore
+# =============================================================================
+
+# ── Environment files ────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Node.js / pnpm ──────────────────────────────────────────────────────────
+node_modules/
+.next/
+.turbo/
+out/
+dist/
+*.tsbuildinfo
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+*.egg-info/
+.eggs/
+*.egg
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Playwright ───────────────────────────────────────────────────────────────
+test-results/
+playwright-report/
+
+# ── MinIO local data ────────────────────────────────────────────────────────
+minio_data/
+
+data/
+
+# ── K8s generated secrets (never commit real values) ────────────────────────
+infra/k8s/secrets.yaml
+
+.agent/
+.agents/
+.claude/
+.codex/
+.vscode/
+.github/

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scraper-worker
+  namespace: ozpropertyreport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scraper-worker
+  template:
+    metadata:
+      labels:
+        app: scraper-worker
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: scraper-worker
+          image: ${REGISTRY}/ozpr-scraper-worker:${IMAGE_TAG}
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: ozpr-secrets
+            - configMapRef:
+                name: ozpr-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ozpr-secrets
+                  key: DATABASE_URL_SYNC
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "384Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

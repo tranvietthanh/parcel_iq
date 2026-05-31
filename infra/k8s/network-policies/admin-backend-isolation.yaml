@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: admin-backend-isolation
+  namespace: ozpropertyreport
+spec:
+  podSelector:
+    matchLabels:
+      app: admin-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only allow traffic from admin-web pods on port 8082
+    - from:
+        - podSelector:
+            matchLabels:
+              app: admin-web
+      ports:
+        - protocol: TCP
+          port: 8082

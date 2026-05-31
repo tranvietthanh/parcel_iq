@@ -1,0 +1,23 @@
+{
+  "name": "ozpropertyreport",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:public": "pnpm --filter public-web dev",
+    "dev:admin": "pnpm --filter admin-web dev",
+    "build": "turbo run build",
+    "build:public": "pnpm --filter public-web build",
+    "build:admin": "pnpm --filter admin-web build",
+    "lint": "turbo run lint",
+    "lint:public": "pnpm --filter public-web lint",
+    "lint:admin": "pnpm --filter admin-web lint",
+    "test": "turbo run test --parallel",
+    "test:public": "pnpm --filter public-web test",
+    "test:admin": "pnpm --filter admin-web test",
+    "typecheck": "turbo run typecheck --parallel"
+  },
+  "devDependencies": {
+    "turbo": "^2"
+  }
+}

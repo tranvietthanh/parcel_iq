@@ -1,0 +1,13 @@
+[project]
+name = "ozpr-scripts"
+version = "0.1.0"
+description = "OZ Property Report infrastructure scripts for data import"
+requires-python = ">=3.12"
+dependencies = [
+    "fiona==1.10.1",
+    "psycopg2-binary==2.9.9",
+]
+
+[tool.uv]
+managed = true
+

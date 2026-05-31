@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: public-web-ingress
+  namespace: ozpropertyreport
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ozpropertyreport.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: public-web
+                port:
+                  number: 3000
+  tls:
+    - hosts:
+        - ozpropertyreport.com
+      secretName: public-web-tls
