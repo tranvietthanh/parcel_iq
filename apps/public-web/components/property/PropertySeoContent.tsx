@@ -1,5 +1,6 @@
 import React from "react";
 import type { PropertyDetail } from "@/types";
+import PropertyDownloadActions from "./PropertyDownloadActions";
 
 type PropertySeoContentProps = {
   property: PropertyDetail;
@@ -230,6 +231,8 @@ export default function PropertySeoContent({ property }: PropertySeoContentProps
           </div>
         </section>
       )}
+
+      <PropertyDownloadActions propertyId={String(property.id)} reportStatus={property.report_status ?? null} />
     </article>
   );
 }
