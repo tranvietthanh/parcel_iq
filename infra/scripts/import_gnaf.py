@@ -34,12 +34,54 @@ import zipfile
 from pathlib import Path
 
 import psycopg2
+from psycopg2.extensions import connection as PgConnection
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://parceliq:devpassword@localhost:5432/parceliq"
 )
 
 VALID_STATES = ("VIC", "NSW", "QLD", "SA", "WA", "TAS", "ACT", "NT")
+COPY_COLUMNS = (
+    "gnaf_pid",
+    "address_string",
+    "latitude",
+    "longitude",
+    "postcode",
+    "suburb",
+    "state",
+)
+
+
+def connect() -> PgConnection:
+    """Connect to PostgreSQL with TCP keepalives to reduce idle disconnects."""
+    return psycopg2.connect(
+        DATABASE_URL,
+        connect_timeout=15,
+        application_name="import_gnaf",
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5,
+    )
+
+
+def _ensure_temp_batch_table(conn: PgConnection) -> None:
+    """Create a temp staging table used for idempotent batch upserts."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TEMP TABLE IF NOT EXISTS tmp_gnaf_batch (
+                gnaf_pid       VARCHAR(50),
+                address_string TEXT,
+                latitude       DOUBLE PRECISION,
+                longitude      DOUBLE PRECISION,
+                postcode       CHAR(4),
+                suburb         VARCHAR(100),
+                state          CHAR(3)
+            ) ON COMMIT PRESERVE ROWS;
+            """
+        )
+    conn.commit()
 
 
 def parse_args() -> argparse.Namespace:
@@ -221,24 +263,64 @@ def build_address_string(
 
 
 # ---------------------------------------------------------------------------
-# Import logic
+# Import logic — checkpoint-based resume
 # ---------------------------------------------------------------------------
 
+PROGRESS_DIR = Path(__file__).parent / ".gnaf_progress"
+
+
+def _progress_path(state: str) -> Path:
+    """Return the checkpoint file path for a given state."""
+    return PROGRESS_DIR / f"{state}.txt"
+
+
+def _read_progress(state: str) -> int:
+    """Read the last successfully imported CSV row position for a state.
+
+    Returns 0 if no checkpoint exists (fresh import).
+    """
+    path = _progress_path(state)
+    if path.exists():
+        try:
+            return int(path.read_text().strip())
+        except (ValueError, OSError):
+            return 0
+    return 0
+
+
+def _write_progress(state: str, csv_row: int) -> None:
+    """Write the current CSV row position to the checkpoint file."""
+    PROGRESS_DIR.mkdir(exist_ok=True)
+    _progress_path(state).write_text(str(csv_row))
+
+
+def _clear_progress(state: str) -> None:
+    """Delete the checkpoint file after successful completion."""
+    path = _progress_path(state)
+    if path.exists():
+        path.unlink()
+
+
 def import_state(
-    conn,
+    conn: PgConnection,
     zf: zipfile.ZipFile,
     names: list[str],
     state: str,
     state_map: dict[str, str],
     batch_size: int,
-) -> int:
+) -> tuple[PgConnection, int]:
     """Import a single state's G-NAF data. Returns row count."""
     # Find required files
     detail_path = _find_psv(names, f"{state}_ADDRESS_DETAIL_psv")
     geocode_path = _find_psv(names, f"{state}_ADDRESS_DEFAULT_GEOCODE_psv")
     if not detail_path or not geocode_path:
         print(f"  WARNING: Missing PSV files for {state}, skipping")
-        return 0
+        return conn, 0
+
+    # Check for resume checkpoint
+    resume_from = _read_progress(state)
+    if resume_from > 0:
+        print(f"  ▶ Resuming from CSV row {resume_from:,} (checkpoint found)")
 
     # Load lookup tables
     print(f"  Loading lookup tables for {state}...")
@@ -255,9 +337,16 @@ def import_state(
     print(f"  Processing address details for {state}...")
     row_count = 0
     skipped = 0
+    csv_row = 0       # tracks position in the CSV (all rows, including skipped)
     batch_buf = io.StringIO()
 
     for row in _read_psv(zf, detail_path):
+        csv_row += 1
+
+        # Fast-skip rows before the checkpoint
+        if csv_row <= resume_from:
+            continue
+
         pid = row.get("ADDRESS_DETAIL_PID", "").strip()
         if not pid or pid not in geocodes:
             skipped += 1
@@ -292,29 +381,90 @@ def import_state(
         row_count += 1
 
         if row_count % batch_size == 0:
-            _copy_batch(conn, batch_buf)
+            conn = _copy_batch(conn, batch_buf)
+            _write_progress(state, csv_row)
             batch_buf = io.StringIO()
-            print(f"    {row_count:,} rows imported...")
+            print(f"    {row_count:,} rows imported (CSV row {csv_row:,})...")
 
     # Final partial batch
     if batch_buf.tell() > 0:
-        _copy_batch(conn, batch_buf)
+        conn = _copy_batch(conn, batch_buf)
+        _write_progress(state, csv_row)
 
-    print(f"  {state}: {row_count:,} rows imported ({skipped:,} skipped)")
-    return row_count
+    # Import complete — remove checkpoint
+    _clear_progress(state)
+
+    if resume_from > 0:
+        print(f"  {state}: {row_count:,} new rows imported (resumed from row {resume_from:,}, {skipped:,} skipped)")
+    else:
+        print(f"  {state}: {row_count:,} rows imported ({skipped:,} skipped)")
+    return conn, row_count
 
 
-def _copy_batch(conn, buf: io.StringIO) -> None:
-    """Execute a COPY FROM for a batch of rows."""
-    buf.seek(0)
-    with conn.cursor() as cur:
-        cur.copy_from(
-            buf,
-            "gnaf_addresses",
-            columns=("gnaf_pid", "address_string", "latitude", "longitude", "postcode", "suburb", "state"),
-            null="\\N",
-        )
-    conn.commit()
+def _copy_batch(conn: PgConnection, buf: io.StringIO, max_retries: int = 5) -> PgConnection:
+    """Execute an idempotent batch import with reconnect retry support."""
+    payload = buf.getvalue()
+
+    for attempt in range(max_retries + 1):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE tmp_gnaf_batch;")
+                cur.copy_from(
+                    io.StringIO(payload),
+                    "tmp_gnaf_batch",
+                    columns=COPY_COLUMNS,
+                    null="\\N",
+                )
+                cur.execute(
+                    """
+                    INSERT INTO gnaf_addresses (
+                        gnaf_pid,
+                        address_string,
+                        latitude,
+                        longitude,
+                        postcode,
+                        suburb,
+                        state
+                    )
+                    SELECT
+                        gnaf_pid,
+                        address_string,
+                        latitude,
+                        longitude,
+                        postcode,
+                        suburb,
+                        state
+                    FROM tmp_gnaf_batch
+                    ON CONFLICT (gnaf_pid) DO NOTHING;
+                    """
+                )
+            conn.commit()
+            return conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+            if attempt >= max_retries:
+                raise
+
+            # Wait longer on each retry — the Postgres pod may need time to
+            # restart after an OOM kill (especially over port-forward).
+            wait_s = min(2 ** attempt * 5, 60)
+            print(
+                f"    WARNING: DB connection dropped during COPY ({exc}). "
+                f"Reconnecting and retrying batch in {wait_s}s (attempt {attempt + 1}/{max_retries})..."
+            )
+            try:
+                conn.close()
+            except Exception:
+                pass
+            time.sleep(wait_s)
+            conn = connect()
+            _ensure_temp_batch_table(conn)
+
+    return conn
 
 
 def main() -> None:
@@ -332,7 +482,8 @@ def main() -> None:
             sys.exit(1)
 
     print("Connecting to database...")
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = connect()
+    _ensure_temp_batch_table(conn)
 
     if args.truncate:
         print("Truncating gnaf_addresses table...")
@@ -353,7 +504,7 @@ def main() -> None:
         start = time.time()
 
         for state in states:
-            count = import_state(conn, zf, all_names, state, state_map, args.batch_size)
+            conn, count = import_state(conn, zf, all_names, state, state_map, args.batch_size)
             total += count
 
         elapsed = time.time() - start

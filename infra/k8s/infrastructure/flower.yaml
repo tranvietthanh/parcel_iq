@@ -13,6 +13,7 @@ spec:
       labels:
         app: flower
     spec:
+      enableServiceLinks: false
       containers:
         - name: flower
           image: mher/flower:2.0

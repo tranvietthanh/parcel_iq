@@ -295,6 +295,28 @@ This port-forwards Postgres to `localhost:15432`, runs all 6 import steps sequen
 > [!IMPORTANT]
 > The G-NAF import (step 5/6) can take **30–60 minutes** and requires **≥16 GiB RAM** on the machine running the import. Do not interrupt it.
 
+### 5.2.1 More Stable Option for Long Runs
+
+If your network or `kubectl port-forward` is unstable, run the long steps independently so you can retry without re-running all 6 steps:
+
+```bash
+# Run once for steps 1-4 + buckets
+make k8s-init-data \
+  lga_source=/path/to/LGA_2024_AUST_GDA2020.shp \
+  suburb_source=/path/to/SAL_2021_AUST_GDA2020.shp \
+  catchment_source=/path/to/school_catchments_vic.geojson \
+  school_source=/path/to/vic_schools_2024.csv \
+  gnaf_source=/path/to/gnaf_feb2026.zip
+
+# If step 5 fails or you want to run it separately
+make k8s-import-gnaf source=/path/to/gnaf_feb2026.zip state=VIC batch=100000
+
+# Then run step 6 separately (can be retried safely)
+make k8s-create-properties state=VIC batch=1000
+```
+
+Both scripts now include retry + reconnect behavior for transient PostgreSQL disconnects, and both imports are idempotent (`ON CONFLICT DO NOTHING`), so rerunning is safe.
+
 ### 5.3 Verify Data
 
 ```bash
@@ -536,6 +558,8 @@ make k8s-init-data ...
 | `make k8s-admin` | Port-forward admin-web, MinIO, Flower |
 | `make k8s-hosts` | Print `/etc/hosts` entries |
 | `make k8s-init-data ...` | Bootstrap VIC reference data |
+| `make k8s-import-gnaf ...` | Run step 5 (G-NAF import) independently |
+| `make k8s-create-properties ...` | Run step 6 (property creation) independently |
 | `make k8s-teardown` | Delete everything (irreversible!) |
 
 ### Key Namespace Resources

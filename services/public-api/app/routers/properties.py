@@ -28,6 +28,7 @@ import uuid
 
 from app.core.credits import debit_credit, get_spendable_credits
 from app.core.rate_limit import limiter
+from app.middleware.turnstile import verify_turnstile
 from app.celery import celery_app
 from app.dependencies import get_current_user, get_db, get_optional_user, require_credits_available
 from app.routers.my_properties import get_or_create_anon_id
@@ -102,10 +103,11 @@ async def lite_report_pdf(
     db: asyncpg.Connection = Depends(get_db),
 ) -> StreamingResponse:
     """Generate and stream a lite report PDF with raw scraped data.
-    
+
     Checks MinIO for cached PDF first; if not found, generates and caches it.
     Uses the same comprehensive template as full reports, but with raw data only.
     """
+    await verify_turnstile(request)
     row = await db.fetchrow(PROPERTY_LITE_QUERY, property_id)
     if not row:
         raise HTTPException(status_code=404, detail="Property not found.")
@@ -320,12 +322,14 @@ async def request_property_scrape(
     db: asyncpg.Connection = Depends(get_db),
 ) -> dict:
     """Request a property scrape to populate detailed information.
-    
+
     This endpoint allows users to request scraping of a property if no data exists yet.
     Anonymous users can request scrapes, but authenticated users get higher priority.
-    
+
     Returns the current report status and task ID if a new scrape was queued.
     """
+    await verify_turnstile(request)
+
     # Check if a report already exists for this property
     existing_report = await db.fetchrow(
         """

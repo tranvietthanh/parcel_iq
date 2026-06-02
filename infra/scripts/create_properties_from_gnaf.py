@@ -18,6 +18,7 @@ import sys
 import time
 
 import psycopg2
+from psycopg2.extensions import connection as PgConnection
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://parceliq:devpassword@localhost:5432/parceliq"
@@ -62,15 +63,68 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def connect():
-    """Connect to PostgreSQL."""
+def connect() -> PgConnection:
+    """Connect to PostgreSQL with TCP keepalives to reduce idle disconnects."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(
+            DATABASE_URL,
+            connect_timeout=15,
+            application_name="create_properties_from_gnaf",
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
+        )
         conn.autocommit = False
         return conn
     except psycopg2.Error as e:
         print(f"❌ Failed to connect to PostgreSQL: {e}")
         sys.exit(1)
+
+
+def execute_with_retry(
+    conn: PgConnection,
+    query: str,
+    params: tuple[object, ...],
+    max_retries: int = 5,
+) -> tuple[PgConnection, int]:
+    """Execute one batch query and reconnect/retry if the connection drops."""
+    global ACTIVE_CONN
+
+    for attempt in range(max_retries + 1):
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(query, params)
+                inserted = cursor.rowcount
+            conn.commit()
+            return conn, inserted
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+            if attempt >= max_retries:
+                raise
+
+            wait_s = min(2 ** attempt, 10)
+            print(
+                f"⚠️  Connection dropped while inserting batch ({e}). "
+                f"Reconnecting and retrying in {wait_s}s..."
+            )
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+            time.sleep(wait_s)
+            conn = connect()
+            ACTIVE_CONN = conn
+        except Exception:
+            conn.rollback()
+            raise
+
+    return conn, 0
 
 
 def main():
@@ -96,17 +150,16 @@ def main():
     total_properties = 0
 
     try:
-        cursor = conn.cursor()
-
-        # Quick estimate so users know the query is running expected scope.
-        if args.state:
-            cursor.execute("SELECT COUNT(*) FROM gnaf_addresses WHERE state = %s", (args.state,))
-            source_count = cursor.fetchone()[0]
-            print(f"   Source rows in gnaf_addresses for {args.state}: {source_count:,}")
-        else:
-            cursor.execute("SELECT COUNT(*) FROM gnaf_addresses")
-            source_count = cursor.fetchone()[0]
-            print(f"   Source rows in gnaf_addresses: {source_count:,}")
+        with conn.cursor() as cursor:
+            # Quick estimate so users know the query is running expected scope.
+            if args.state:
+                cursor.execute("SELECT COUNT(*) FROM gnaf_addresses WHERE state = %s", (args.state,))
+                source_count = cursor.fetchone()[0]
+                print(f"   Source rows in gnaf_addresses for {args.state}: {source_count:,}")
+            else:
+                cursor.execute("SELECT COUNT(*) FROM gnaf_addresses")
+                source_count = cursor.fetchone()[0]
+                print(f"   Source rows in gnaf_addresses: {source_count:,}")
 
         print(f"Executing batched inserts with batch_size={args.batch_size:,}...")
         if args.limit:
@@ -168,25 +221,25 @@ def main():
             ON CONFLICT (gnaf_pid) DO NOTHING;
             """
 
-            cursor.execute(query, (args.state, args.state, batch_limit))
-            inserted = cursor.rowcount
+            conn, inserted = execute_with_retry(
+                conn,
+                query,
+                (args.state, args.state, batch_limit),
+            )
 
             if inserted == 0:
-                conn.commit()
                 break
 
-            conn.commit()
             rows_inserted += inserted
             batch_num += 1
             print(f"   Batch {batch_num}: inserted {inserted:,} (total {rows_inserted:,})")
 
-        if args.state:
-            cursor.execute("SELECT COUNT(*) FROM properties WHERE state = %s", (args.state,))
-        else:
-            cursor.execute("SELECT COUNT(*) FROM properties")
-        total_properties = cursor.fetchone()[0]
-
-        cursor.close()
+        with conn.cursor() as cursor:
+            if args.state:
+                cursor.execute("SELECT COUNT(*) FROM properties WHERE state = %s", (args.state,))
+            else:
+                cursor.execute("SELECT COUNT(*) FROM properties")
+            total_properties = cursor.fetchone()[0]
 
     except KeyboardInterrupt:
         print("\n⚠️  Import interrupted by user. Rolling back transaction...")

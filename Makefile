@@ -9,6 +9,7 @@ SHELL := /bin/bash
 # Docker registry for K8s image publishing
 # Override via environment or: make build-docker tag=X REGISTRY=myregistry.io/myorg
 REGISTRY ?= ghcr.io/your-org
+INTERNAL_API_URL ?= http://public-api:8080
 
 # Load .env if it exists (for POSTGRES_USER, etc.)
 ifneq (,$(wildcard .env))
@@ -257,20 +258,31 @@ SERVICES := public-api admin-backend public-web admin-web scraper-worker llm-par
 .PHONY: build-docker
 build-docker: ## Build all 7 Docker images (usage: make build-docker tag=<tag>)
 	@if [ -z "$(tag)" ]; then echo "Usage: make build-docker tag=<tag>"; exit 1; fi
+	@if [ -z "$(CLERK_PUBLIC_PUBLISHABLE_KEY)" ]; then echo "ERROR: CLERK_PUBLIC_PUBLISHABLE_KEY is required in root .env for public-web build."; exit 1; fi
+	@if [ -z "$(NEXT_PUBLIC_MAPBOX_TOKEN)" ]; then echo "ERROR: NEXT_PUBLIC_MAPBOX_TOKEN is required in root .env for public-web build."; exit 1; fi
+	@if [ -z "$(NEXT_PUBLIC_CREDIT_PURCHASE_ENABLED)" ]; then echo "ERROR: NEXT_PUBLIC_CREDIT_PURCHASE_ENABLED is required in root .env for public-web build."; exit 1; fi
+	@if [ -z "$(NEXT_PUBLIC_TURNSTILE_SITE_KEY)" ]; then echo "ERROR: NEXT_PUBLIC_TURNSTILE_SITE_KEY is required in root .env for public-web build."; exit 1; fi
+	@if [ -z "$(CLERK_ADMIN_PUBLISHABLE_KEY)" ]; then echo "ERROR: CLERK_ADMIN_PUBLISHABLE_KEY is required in root .env for admin-web build."; exit 1; fi
 	@echo "Building images with tag $(tag) for registry $(REGISTRY)..."
-	docker build -t $(REGISTRY)/ozpr-public-api:$(tag) services/public-api/
+	docker build -t $(REGISTRY)/ozpr-public-api:$(tag) -f services/public-api/Dockerfile .
 	@echo "  ✓ $(REGISTRY)/ozpr-public-api:$(tag)"
-	docker build -t $(REGISTRY)/ozpr-admin-backend:$(tag) services/admin-backend/
+	docker build -t $(REGISTRY)/ozpr-admin-backend:$(tag) -f services/admin-backend/Dockerfile .
 	@echo "  ✓ $(REGISTRY)/ozpr-admin-backend:$(tag)"
 	docker build -t $(REGISTRY)/ozpr-public-web:$(tag) \
+		--build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$(CLERK_PUBLIC_PUBLISHABLE_KEY) \
+		--build-arg NEXT_PUBLIC_MAPBOX_TOKEN=$(NEXT_PUBLIC_MAPBOX_TOKEN) \
+		--build-arg NEXT_PUBLIC_CREDIT_PURCHASE_ENABLED=$(NEXT_PUBLIC_CREDIT_PURCHASE_ENABLED) \
+		--build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY=$(NEXT_PUBLIC_TURNSTILE_SITE_KEY) \
+		--build-arg INTERNAL_API_URL=$(INTERNAL_API_URL) \
 		-f apps/public-web/Dockerfile .
 	@echo "  ✓ $(REGISTRY)/ozpr-public-web:$(tag)"
 	docker build -t $(REGISTRY)/ozpr-admin-web:$(tag) \
+		--build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$(CLERK_ADMIN_PUBLISHABLE_KEY) \
 		-f apps/admin-web/Dockerfile .
 	@echo "  ✓ $(REGISTRY)/ozpr-admin-web:$(tag)"
-	docker build -t $(REGISTRY)/ozpr-scraper-worker:$(tag) services/scraper-worker/
+	docker build -t $(REGISTRY)/ozpr-scraper-worker:$(tag) -f services/scraper-worker/Dockerfile .
 	@echo "  ✓ $(REGISTRY)/ozpr-scraper-worker:$(tag)"
-	docker build -t $(REGISTRY)/ozpr-llm-parser-worker:$(tag) services/llm-parser-worker/
+	docker build -t $(REGISTRY)/ozpr-llm-parser-worker:$(tag) -f services/llm-parser-worker/Dockerfile .
 	@echo "  ✓ $(REGISTRY)/ozpr-llm-parser-worker:$(tag)"
 	docker build -t $(REGISTRY)/ozpr-db-migrate:$(tag) shared/db-migrations/
 	@echo "  ✓ $(REGISTRY)/ozpr-db-migrate:$(tag)"
@@ -410,6 +422,7 @@ k8s-init-data: ## Bootstrap VIC reference data on cluster (usage: make k8s-init-
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "  VIC Data Initialization — connecting via port-forward"
 	@echo "  Target cluster: $$(kubectl config current-context)"
+	@echo "  Tip: for long runs, use make k8s-import-gnaf then make k8s-create-properties"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@# Extract DB credentials from K8s secret
 	@PG_USER=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_USER}' | base64 -d); \
@@ -465,6 +478,50 @@ k8s-init-data: ## Bootstrap VIC reference data on cluster (usage: make k8s-init-
 	echo "  ✓ VIC data initialization complete!"; \
 	echo "  Run 'make k8s-admin' to open admin surfaces and verify data."; \
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+.PHONY: k8s-import-gnaf
+k8s-import-gnaf: ## Import G-NAF to cluster DB only (usage: make k8s-import-gnaf source=<path> [state=VIC] [batch=100000])
+	@if [ -z "$(source)" ]; then \
+		echo "Usage: make k8s-import-gnaf source=/path/to/gnaf_feb2026.zip [state=VIC] [batch=100000]"; \
+		exit 1; \
+	fi
+	@STATE="$(state)"; \
+	if [ -z "$$STATE" ]; then STATE="VIC"; fi; \
+	BATCH="$(batch)"; \
+	if [ -z "$$BATCH" ]; then BATCH="25000"; fi; \
+	PG_USER=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_USER}' | base64 -d); \
+	PG_PASS=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d); \
+	PG_DB=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_DB}' | base64 -d); \
+	K8S_DB_URL="postgresql://$$PG_USER:$$PG_PASS@localhost:15432/$$PG_DB"; \
+	echo "→ Starting Postgres port-forward (cluster:5432 → localhost:15432)..."; \
+	kubectl port-forward -n ozpropertyreport svc/postgres 15432:5432 &>/dev/null & \
+	PG_PF_PID=$$!; \
+	sleep 3; \
+	echo "→ Importing G-NAF (state=$$STATE, batch=$$BATCH)..."; \
+	(cd infra/scripts && DATABASE_URL=$$K8S_DB_URL uv run python import_gnaf.py --state $$STATE --batch-size $$BATCH --source "$(source)") || { kill $$PG_PF_PID 2>/dev/null; exit 1; }; \
+	kill $$PG_PF_PID 2>/dev/null || true; \
+	echo "✓ G-NAF import completed."
+
+.PHONY: k8s-create-properties
+k8s-create-properties: ## Create properties in cluster DB only (usage: make k8s-create-properties [state=VIC] [limit=100000] [batch=1000])
+	@STATE="$(state)"; \
+	if [ -z "$$STATE" ]; then STATE="VIC"; fi; \
+	BATCH="$(batch)"; \
+	if [ -z "$$BATCH" ]; then BATCH="1000"; fi; \
+	LIMIT_FLAG=""; \
+	if [ -n "$(limit)" ]; then LIMIT_FLAG="--limit $(limit)"; fi; \
+	PG_USER=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_USER}' | base64 -d); \
+	PG_PASS=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d); \
+	PG_DB=$$(kubectl get secret ozpr-secrets -n ozpropertyreport -o jsonpath='{.data.POSTGRES_DB}' | base64 -d); \
+	K8S_DB_URL="postgresql://$$PG_USER:$$PG_PASS@localhost:15432/$$PG_DB"; \
+	echo "→ Starting Postgres port-forward (cluster:5432 → localhost:15432)..."; \
+	kubectl port-forward -n ozpropertyreport svc/postgres 15432:5432 &>/dev/null & \
+	PG_PF_PID=$$!; \
+	sleep 3; \
+	echo "→ Creating properties (state=$$STATE, batch=$$BATCH)..."; \
+	(cd infra/scripts && DATABASE_URL=$$K8S_DB_URL uv run python create_properties_from_gnaf.py --state $$STATE --batch-size $$BATCH $$LIMIT_FLAG) || { kill $$PG_PF_PID 2>/dev/null; exit 1; }; \
+	kill $$PG_PF_PID 2>/dev/null || true; \
+	echo "✓ Properties creation completed."
 
 # ─── Help ────────────────────────────────────────────────────────────────────
 

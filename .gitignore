@@ -59,6 +59,9 @@ data/
 # ── K8s generated secrets (never commit real values) ────────────────────────
 infra/k8s/secrets.yaml
 
+# ── Import progress checkpoints ─────────────────────────────────────────
+.gnaf_progress/
+
 .agent/
 .agents/
 .claude/

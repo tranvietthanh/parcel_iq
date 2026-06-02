@@ -14,6 +14,7 @@ export function useApiClient() {
       method: string,
       path: string,
       body?: unknown,
+      extraHeaders?: Record<string, string>,
     ): Promise<T> {
       const token = await getToken();
       const res = await fetch(path, {
@@ -21,6 +22,7 @@ export function useApiClient() {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...extraHeaders,
         },
         body: body ? JSON.stringify(body) : undefined,
       });
@@ -37,8 +39,10 @@ export function useApiClient() {
 
   return useMemo(
     () => ({
-      get: <T>(path: string) => request<T>("GET", path),
-      post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
+      get: <T>(path: string, extraHeaders?: Record<string, string>) =>
+        request<T>("GET", path, undefined, extraHeaders),
+      post: <T>(path: string, body: unknown, extraHeaders?: Record<string, string>) =>
+        request<T>("POST", path, body, extraHeaders),
     }),
     [request],
   );

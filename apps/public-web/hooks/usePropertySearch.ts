@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { useApiClient } from "@/lib/api";
+import { ApiError } from "@/types";
 import type { BBox, PropertyPin, SearchSuggestion } from "@/types";
 
 /**
@@ -24,6 +25,18 @@ export function usePropertySearch(bbox: BBox | null, query?: string, zoneId?: st
     {
       revalidateOnFocus: false,
       dedupingInterval: 1000,
+      onErrorRetry: (error, _key, _config, revalidate, { retryCount }) => {
+        // Never retry client errors (e.g. 400/403) to avoid request storms from map viewport updates.
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+          return;
+        }
+
+        if (retryCount >= 2) {
+          return;
+        }
+
+        setTimeout(() => revalidate({ retryCount }), 1000 * (retryCount + 1));
+      },
     },
   );
 

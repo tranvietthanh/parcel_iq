@@ -1,16 +1,19 @@
-FROM mcr.microsoft.com/playwright/python:v1.42.0-jammy AS base
-WORKDIR /app
+FROM mcr.microsoft.com/playwright/python:v1.52.0-noble AS base
+WORKDIR /workspace
 RUN pip install uv
 
 FROM base AS builder
-COPY pyproject.toml uv.lock ./
-COPY ../../shared/py-types /shared/py-types
-RUN uv sync --frozen --no-dev
+WORKDIR /workspace/services/scraper-worker
+COPY services/scraper-worker/pyproject.toml services/scraper-worker/uv.lock ./
+COPY shared/py-types /workspace/shared/py-types
+RUN UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --python /usr/bin/python3
 
 FROM base AS runner
-COPY --from=builder /app/.venv ./.venv
-COPY app ./app
-ENV PATH="/app/.venv/bin:$PATH"
+WORKDIR /workspace/services/scraper-worker
+COPY --from=builder /workspace/services/scraper-worker/.venv ./.venv
+COPY --from=builder /workspace/shared/py-types /workspace/shared/py-types
+COPY services/scraper-worker/app ./app
+ENV PATH="/workspace/services/scraper-worker/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 

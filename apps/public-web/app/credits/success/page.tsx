@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiClient } from "@/lib/api";
 
 type OrderStatus = "PENDING" | "PAID" | "FAILED" | "loading" | "error";
 
-export default function CreditSuccessPage() {
+function CreditSuccessContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order_id");
   const api = useApiClient();
@@ -152,5 +152,22 @@ export default function CreditSuccessPage() {
         </>
       )}
     </main>
+  );
+}
+
+export default function CreditSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-xl px-4 py-20 text-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-700" />
+            <p className="text-zinc-500 dark:text-zinc-400">Loading payment status…</p>
+          </div>
+        </main>
+      }
+    >
+      <CreditSuccessContent />
+    </Suspense>
   );
 }

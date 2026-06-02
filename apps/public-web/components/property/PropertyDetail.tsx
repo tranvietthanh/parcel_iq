@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SignInButton, useAuth, useUser } from "@clerk/nextjs";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import Spinner from "@/components/ui/Spinner";
 import { useApiClient } from "@/lib/api";
 import { useProperty } from "@/hooks/useProperty";
@@ -148,11 +149,23 @@ export default function PropertyDetail({
   const [liteDownloadsUsedToday, setLiteDownloadsUsedToday] = useState(0);
   const [anonLiteLimitReached, setAnonLiteLimitReached] = useState(false);
   const pollCountRef = useRef(0);
+  const turnstileRef = useRef<TurnstileInstance>(null);
+  const turnstileTokenRef = useRef<string | null>(null);
+
+  const consumeTurnstileToken = (): string | null => {
+    const token = turnstileTokenRef.current;
+    if (token) {
+      turnstileTokenRef.current = null;
+      turnstileRef.current?.reset();
+    }
+    return token;
+  };
 
   // Credit state
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [liteDownloadError, setLiteDownloadError] = useState<string | null>(null);
 
   // Duplicate-download modal state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -203,12 +216,14 @@ export default function PropertyDetail({
       setAcknowledged(false);
       setScrapeRequested(false);
       setDownloadError(null);
+      setLiteDownloadError(null);
       setPrecheckResult(null);
       return;
     }
     setAcknowledged(localStorage.getItem("ack_general_disclaimer") === "true");
     setScrapeRequested(false);
     setDownloadError(null);
+    setLiteDownloadError(null);
     setPrecheckResult(null);
   }, [propertyId]);
 
@@ -248,9 +263,11 @@ export default function PropertyDetail({
     if (!propertyId) return;
     setRequestingData(true);
     try {
+      const token = consumeTurnstileToken();
       const response = await api.post<RequestScrapeResponse>(
         `/api/properties/${propertyId}/request-scrape`,
         {},
+        token ? { "X-Turnstile-Token": token } : undefined,
       );
       if (response.status === "queued" || response.status === "processing") {
         setScrapeRequested(true);
@@ -266,14 +283,20 @@ export default function PropertyDetail({
   };
 
   const handleLiteDownload = async () => {
-    if (!data || isSignedIn || anonLiteLimitReached || reportsUnavailable) return;
+    if (!data || isSignedIn || anonLiteLimitReached) return;
+    setLiteDownloadError(null);
     try {
+      const token = consumeTurnstileToken();
       const response = await fetch(`/api/properties/${data.id}/lite-report/pdf`, {
         method: "GET",
-        headers: { Accept: "application/pdf" },
+        headers: {
+          Accept: "application/pdf",
+          ...(token ? { "X-Turnstile-Token": token } : {}),
+        },
       });
       if (!response.ok) {
-        console.error(`Lite PDF generation failed: ${response.statusText}`);
+        const err = await response.json().catch(() => ({}));
+        setLiteDownloadError(err.detail ?? "Failed to generate lite report. Please try again.");
         return;
       }
       const blob = await response.blob();
@@ -299,8 +322,8 @@ export default function PropertyDetail({
         setLiteDownloadsUsedToday(uniqueIds.length);
         setAnonLiteLimitReached(uniqueIds.length >= 3);
       }
-    } catch (error) {
-      console.error("Failed to download lite report:", error);
+    } catch {
+      setLiteDownloadError("An unexpected error occurred. Please try again.");
     }
   };
 
@@ -390,6 +413,15 @@ export default function PropertyDetail({
 
   const content = (
     <div className="p-4">
+      <Turnstile
+        ref={turnstileRef}
+        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""}
+        options={{ appearance: "interaction-only", size: "invisible", execution: "render" }}
+        onSuccess={(token) => { turnstileTokenRef.current = token; }}
+        onError={() => { turnstileTokenRef.current = null; }}
+        onExpire={() => { turnstileTokenRef.current = null; }}
+      />
+
       {showDuplicateModal && precheckResult && (
         <DuplicateWarningModal
           previousDownloadAt={precheckResult.previous_download_at}
@@ -413,7 +445,7 @@ export default function PropertyDetail({
 
       {data && (
         <>
-          {!acknowledged ? (
+          {!acknowledged && (
             <div className="mx-auto max-w-2xl rounded-lg border border-amber-200 bg-amber-50 p-6 dark:border-amber-800 dark:bg-amber-950">
               <h3 className="mb-3 text-lg font-semibold text-amber-900 dark:text-amber-100">
                 Important Disclaimer
@@ -437,7 +469,9 @@ export default function PropertyDetail({
                 I understand - show the report
               </button>
             </div>
-          ) : (
+          )}
+
+          {acknowledged && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white">
@@ -650,77 +684,82 @@ export default function PropertyDetail({
                 </section>
               )}
 
-              {/* ── Download actions ─────────────────────────────────────── */}
-              <div className="rounded-lg border border-zinc-200 p-3 space-y-3 dark:border-zinc-700">
-
-                {/* Credit balance badge — shown to signed-in users */}
-                {isSignedIn && wallet && (
-                  <CreditBadge wallet={wallet} />
-                )}
-
-                {!isSignedIn && (
-                  <>
-                    <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                      Sign in to download full reports using your daily free credits.
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Anonymous lite downloads today: {liteDownloadsUsedToday}/3
-                    </p>
-                    <button
-                      onClick={handleLiteDownload}
-                      disabled={anonLiteLimitReached || reportsUnavailable}
-                      className="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                    >
-                      Download Lite Report
-                    </button>
-                  </>
-                )}
-
-                {isSignedIn ? (
-                  <button
-                    id="download-full-report-btn"
-                    onClick={handleFullDownloadClick}
-                    disabled={reportsUnavailable || downloadLoading}
-                    className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-                  >
-                    {downloadLoading
-                      ? "Downloading…"
-                      : "Download Full Report (1 credit)"}
-                  </button>
-                ) : (
-                  <SignInButton mode="modal">
-                    <button
-                      disabled={reportsUnavailable}
-                      className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-                    >
-                      Sign in to download full report
-                    </button>
-                  </SignInButton>
-                )}
-
-                {/* Error message for failed/exhausted downloads */}
-                {downloadError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950">
-                    <p className="text-xs text-red-700 dark:text-red-300">{downloadError}</p>
-                    {downloadError.toLowerCase().includes("credit") && (
-                      <a
-                        href="/pricing"
-                        className="mt-1 inline-block text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400 underline"
-                      >
-                        View credit options →
-                      </a>
-                    )}
-                  </div>
-                )}
-
-                {reportsUnavailable && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Download is unavailable while property data is processing or not ready.
-                  </p>
-                )}
-              </div>
             </div>
           )}
+
+          {/* ── Download actions — always visible once data is loaded ─── */}
+          <div className="rounded-lg border border-zinc-200 p-3 space-y-3 dark:border-zinc-700">
+
+            {/* Credit balance badge — shown to signed-in users */}
+            {isSignedIn && wallet && (
+              <CreditBadge wallet={wallet} />
+            )}
+
+            {!isSignedIn && (
+              <>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                  Sign in to download full reports using your daily free credits.
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Anonymous lite downloads today: {liteDownloadsUsedToday}/3
+                </p>
+                <button
+                  onClick={handleLiteDownload}
+                  disabled={anonLiteLimitReached || !data?.report_status || isProcessing}
+                  className="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Download Lite Report
+                </button>
+                {liteDownloadError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{liteDownloadError}</p>
+                )}
+                {(!data?.report_status || isProcessing) && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {isProcessing ? "Lite report will be available once processing completes." : "Request property information above to enable the lite report download."}
+                  </p>
+                )}
+              </>
+            )}
+
+            {isSignedIn ? (
+              <button
+                id="download-full-report-btn"
+                onClick={handleFullDownloadClick}
+                disabled={reportsUnavailable || downloadLoading}
+                className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {downloadLoading ? "Downloading…" : "Download Full Report (1 credit)"}
+              </button>
+            ) : (
+              <SignInButton mode="modal">
+                <button
+                  className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                >
+                  Sign in to download full report
+                </button>
+              </SignInButton>
+            )}
+
+            {downloadError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950">
+                <p className="text-xs text-red-700 dark:text-red-300">{downloadError}</p>
+                {downloadError.toLowerCase().includes("credit") && (
+                  <a
+                    href="/pricing"
+                    className="mt-1 inline-block text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400 underline"
+                  >
+                    View credit options →
+                  </a>
+                )}
+              </div>
+            )}
+
+            {reportsUnavailable && isSignedIn && (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Full report download is unavailable while property data is processing or not ready.
+              </p>
+            )}
+          </div>
         </>
       )}
     </div>

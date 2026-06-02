@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.core.rate_limit import limiter
 from app.dependencies import get_db
-from app.middleware.turnstile import verify_turnstile
 from app.schemas.search import (
     Feature,
     FeatureCollection,
@@ -101,7 +100,6 @@ async def search(
     bbox: str | None = Query(default=None),
     zone_id: UUID | None = Query(default=None),
     limit: int = Query(default=100, le=500, ge=1),
-    _turnstile: None = Depends(verify_turnstile),
     db: asyncpg.Connection = Depends(get_db),
 ) -> FeatureCollection | TextSearchResponse:
     """Search properties by bounding box or text query."""

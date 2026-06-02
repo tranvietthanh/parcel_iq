@@ -3,7 +3,7 @@
 # ────────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS base
 
-WORKDIR /app
+WORKDIR /workspace
 
 # Install uv for dependency management
 RUN pip install --no-cache-dir uv
@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir uv
 FROM base AS builder
 
 # Copy dependency files
-COPY pyproject.toml uv.lock ./
+WORKDIR /workspace/services/admin-backend
+COPY services/admin-backend/pyproject.toml services/admin-backend/uv.lock ./
+COPY shared/pdf-renderer /workspace/shared/pdf-renderer
 
 # Install dependencies (no dev packages)
 RUN uv sync --frozen --no-dev
@@ -24,14 +26,16 @@ RUN uv sync --frozen --no-dev
 # ────────────────────────────────────────────────────────────────
 FROM base AS runner
 
+WORKDIR /workspace/services/admin-backend
+
 # Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /workspace/services/admin-backend/.venv /workspace/services/admin-backend/.venv
 
 # Copy application code
-COPY app ./app
+COPY services/admin-backend/app ./app
 
 # Set environment variables
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/workspace/services/admin-backend/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Expose port
