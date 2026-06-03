@@ -31,5 +31,5 @@ data:
   ADMIN_BACKEND_PORT: "8082"
 
   # ── Feature flags ─────────────────────────────────────────────────────────
-  PROPERTY_IMAGE_ENRICHMENT_ENABLED: "false"
+  PROPERTY_IMAGE_ENRICHMENT_ENABLED: "true"
   CREDIT_PURCHASE_ENABLED: "false"
