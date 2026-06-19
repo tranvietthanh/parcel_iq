@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 # Docker registry for K8s image publishing
 # Override via environment or: make build-docker tag=X REGISTRY=myregistry.io/myorg
-REGISTRY ?= ghcr.io/your-org
+REGISTRY ?= ghcr.io/tranvietthanh
 INTERNAL_API_URL ?= http://public-api:8080
 
 # Load .env if it exists (for POSTGRES_USER, etc.)

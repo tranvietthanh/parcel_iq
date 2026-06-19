@@ -67,7 +67,7 @@ const STATIC_PAGES: MetadataRoute.Sitemap = [
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const res = await fetch(`${API_URL}/api/sitemap/urls`, {
-      next: { revalidate: 86400 },
+      cache: "no-store",
     });
 
     if (!res.ok) {

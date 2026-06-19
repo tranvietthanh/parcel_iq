@@ -129,7 +129,7 @@ def store_regional_data_to_db(
                 fetched_at
             )
             VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (region_code)
+            ON CONFLICT (region_code, region_type)
             DO UPDATE SET
                 region_name = EXCLUDED.region_name,
                 region_type = EXCLUDED.region_type,

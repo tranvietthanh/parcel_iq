@@ -72,10 +72,8 @@ async def zone_summary(
             """
             SELECT COUNT(*) AS total_count,
                    COUNT(*) FILTER (WHERE pr.status = 'READY') AS with_reports,
-                   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.estimated_value)
-                       FILTER (WHERE p.estimated_value IS NOT NULL) AS median_estimated_value,
-                   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.land_size_sqm)
-                       FILTER (WHERE p.land_size_sqm IS NOT NULL) AS median_land_size_sqm
+                   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.estimated_value) AS median_estimated_value,
+                   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.land_size_sqm) AS median_land_size_sqm
             FROM properties p
             LEFT JOIN property_reports pr ON pr.property_id = p.id
             WHERE p.suburb_id = $1
@@ -99,10 +97,8 @@ async def zone_summary(
                 """
                 SELECT COUNT(*) AS total_count,
                        COUNT(*) FILTER (WHERE pr.status = 'READY') AS with_reports,
-                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.estimated_value)
-                           FILTER (WHERE p.estimated_value IS NOT NULL) AS median_estimated_value,
-                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.land_size_sqm)
-                           FILTER (WHERE p.land_size_sqm IS NOT NULL) AS median_land_size_sqm
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.estimated_value) AS median_estimated_value,
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.land_size_sqm) AS median_land_size_sqm
                 FROM properties p
                 JOIN property_school_catchments psc ON psc.property_id = p.id
                 LEFT JOIN property_reports pr ON pr.property_id = p.id
@@ -116,10 +112,8 @@ async def zone_summary(
                 """
                 SELECT COUNT(*) AS total_count,
                        COUNT(*) FILTER (WHERE pr.status = 'READY') AS with_reports,
-                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.estimated_value)
-                           FILTER (WHERE p.estimated_value IS NOT NULL) AS median_estimated_value,
-                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.land_size_sqm)
-                           FILTER (WHERE p.land_size_sqm IS NOT NULL) AS median_land_size_sqm
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.estimated_value) AS median_estimated_value,
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.land_size_sqm) AS median_land_size_sqm
                 FROM properties p
                 LEFT JOIN property_reports pr ON pr.property_id = p.id
                 WHERE ST_Contains((SELECT geom FROM spatial_zones WHERE id = $1), p.geom)

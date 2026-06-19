@@ -10,6 +10,15 @@ OZ Property Report is a property intelligence platform for Australian real estat
 
 ---
 
+## Tools absolute path
+
+if you can find codegraph: use /home/thanhtran/.nvm/versions/node/v24.6.0/bin/codegraph
+if you can find openspec: use /home/thanhtran/.nvm/versions/node/v24.6.0/bin/openspec
+if you can find npx: use /home/thanhtran/.nvm/versions/node/v24.6.0/bin/npx
+if you need to connect to k8s: use kubectl directly, namespace ozpropertyreport
+
+---
+
 ## Non-Negotiable Architecture Rules
 
 **1. The Admin Backend API has no internet ingress. Never add one.**
