@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { listUsers } from "@/actions/users";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = {
   page?: string;
   search?: string;

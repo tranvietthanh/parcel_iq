@@ -51,6 +51,9 @@ grep -E '^(DATABASE_URL|DATABASE_URL_SYNC)=' .env
 grep -E '^(CLERK_PUBLIC_PUBLISHABLE_KEY|CLERK_PUBLIC_SECRET_KEY)=' .env
 grep -E '^(CLERK_ADMIN_PUBLISHABLE_KEY|CLERK_ADMIN_SECRET_KEY)=' .env
 grep -E '^(ADMIN_SERVICE_TOKEN|MINIO_ACCESS_KEY|MINIO_SECRET_KEY)=' .env
+
+> [!CAUTION]
+> **MinIO cluster secret values must be unique** — do not reuse the local Docker Compose defaults (`minioadmin`) for `MINIO_ACCESS_KEY` or `MINIO_SECRET_KEY` when preparing the K8s secret. The cluster secret should be rotated to distinct production values before `make k8s-secrets` or `make deploy`.
 ```
 
 > [!CAUTION]

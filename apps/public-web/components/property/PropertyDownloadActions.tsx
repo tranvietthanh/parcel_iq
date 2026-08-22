@@ -110,8 +110,11 @@ export default function PropertyDownloadActions({ propertyId, reportStatus }: Pr
     try {
       const token = await getToken();
       const res = await fetch(`/api/properties/${propertyId}/full/pdf`, {
+        method: "POST",
         headers: {
           Accept: "application/pdf",
+          // Stable per attempt: retries of this download are charged at most once.
+          "Idempotency-Key": crypto.randomUUID(),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });

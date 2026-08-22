@@ -10,12 +10,12 @@ OZ Property Report is a property intelligence platform for Australian real estat
 
 ---
 
-## Tools absolute path
+## Tools
 
-if you can find codegraph: use /home/thanhtran/.nvm/versions/node/v24.6.0/bin/codegraph
-if you can find openspec: use /home/thanhtran/.nvm/versions/node/v24.6.0/bin/openspec
-if you can find npx: use /home/thanhtran/.nvm/versions/node/v24.6.0/bin/npx
-if you need to connect to k8s: use kubectl directly, namespace ozpropertyreport
+Resolve tooling from `$PATH` (do not hardcode machine-specific absolute paths):
+- `codegraph` and `openspec` — install/run via the repo's Node toolchain (`npx <tool>` if not on `$PATH`).
+- `npx` — use the `npx` on your `$PATH` (Node is managed via the repo's `.nvmrc`/`corepack`).
+- k8s: use `kubectl` directly, namespace `ozpropertyreport`.
 
 ---
 
@@ -236,7 +236,7 @@ All specifications are in `docs/`:
 | Adding `password_hash` or `role` column to `users` table | Clerk owns auth; users table stores only `clerk_user_id` |
 | Creating a new Alembic migration without running existing ones first | Will cause conflicts; always `alembic upgrade head` before `revision --autogenerate` |
 | Using `npm` or `yarn` in any JS context | This repo uses `pnpm` exclusively |
-| Disabling `review_flag` check to speed up development | Reports must go through review if LLM confidence is low — this is a legal risk mitigation |
+| Re-introducing a `review_flag` / manual review queue without a product+legal decision | The low-confidence manual-review workflow was intentionally removed in migration `023_on_demand_property_ingestion` (status collapsed to QUEUING/PROCESSING/READY/FAILED). The LLM worker now marks reports READY directly and stores `overall_confidence` for display only. If a review gate is needed again, treat it as a legal-compliance change (see `docs/07-legal-compliance.md`), not a quick edit |
 | Importing from one app into another | `apps/public-web` and `apps/admin-web` are independent — no cross-imports |
 | Setting `FLOWER_BASIC_AUTH` | Flower auth is handled by the Admin Backend API proxy layer; Flower itself has no auth |
 | Activating venvs manually (`source .venv/bin/activate`) | Use `uv run` instead — it auto-selects the correct local `.venv/` |

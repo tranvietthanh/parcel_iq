@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -27,8 +28,25 @@ class Settings(BaseSettings):
     PUBLIC_WEB_URL: str = "https://ozpropertyreport.com"
 
     # ── App ──────────────────────────────────────────────────────────────
-    ENVIRONMENT: str = "development"
+    # Fail closed: default to production. Local dev sets ENVIRONMENT=development.
+    ENVIRONMENT: str = "production"
     LOG_LEVEL: str = "INFO"
+
+    @model_validator(mode="after")
+    def _reject_insecure_defaults_in_production(self) -> "Settings":
+        """Refuse to boot in production with known development defaults."""
+        if self.ENVIRONMENT != "production":
+            return self
+        problems: list[str] = []
+        if "devpassword" in self.DATABASE_URL:
+            problems.append("DATABASE_URL still uses the dev password")
+        if not self.OPENAI_API_KEY:
+            problems.append("OPENAI_API_KEY is not set")
+        if problems:
+            raise ValueError(
+                "Insecure production configuration: " + "; ".join(problems)
+            )
+        return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -190,9 +190,16 @@ export default function PropertyDetail({
 
   const reportsUnavailable = !hasDetailData || isProcessing;
 
-  // Poll while processing
+  // Poll whenever we're waiting on data — either the server already reports
+  // PROCESSING, or we just requested a scrape locally (scrapeRequested) and the
+  // server status hasn't caught up yet. Gating on isProcessing alone left a
+  // freshly-requested property stuck on "Data Being Processed" forever, because
+  // nothing re-fetched until the cached report_status happened to be PROCESSING.
+  const shouldPoll =
+    (isProcessing || scrapeRequested) && !hasDetailData && !isFailed;
+
   useEffect(() => {
-    if (!isProcessing) {
+    if (!shouldPoll) {
       pollCountRef.current = 0;
       setPollTimedOut(false);
       return;
@@ -208,7 +215,15 @@ export default function PropertyDetail({
       mutate();
     }, 10000);
     return () => clearInterval(interval);
-  }, [isProcessing, mutate]);
+  }, [shouldPoll, mutate]);
+
+  // Once the server reaches a terminal status, drop the local "just requested"
+  // flag so the processing screen can't linger after data is ready or failed.
+  useEffect(() => {
+    if (data?.report_status === "READY" || data?.report_status === "FAILED") {
+      setScrapeRequested(false);
+    }
+  }, [data?.report_status]);
 
   // Reset on property change
   useEffect(() => {
@@ -271,6 +286,9 @@ export default function PropertyDetail({
       );
       if (response.status === "queued" || response.status === "processing") {
         setScrapeRequested(true);
+        // Refetch now so report_status flips to PROCESSING and polling continues
+        // from real server state rather than waiting on the first 10s tick.
+        mutate();
       }
       if (response.status === "ready") {
         mutate();
@@ -336,9 +354,11 @@ export default function PropertyDetail({
     try {
       const token = await getToken();
       const response = await fetch(`/api/properties/${data.id}/full/pdf`, {
-        method: "GET",
+        method: "POST",
         headers: {
           Accept: "application/pdf",
+          // Stable per attempt: retries of this download are charged at most once.
+          "Idempotency-Key": crypto.randomUUID(),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
@@ -501,7 +521,7 @@ export default function PropertyDetail({
                 </div>
               )}
 
-              {(isProcessing || scrapeRequested) && !hasDetailData && (
+              {(isProcessing || scrapeRequested) && !hasDetailData && !isFailed && (
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-6 dark:border-blue-800 dark:bg-blue-950">
                   <div className="flex items-center gap-3">
                     {!pollTimedOut && <Spinner />}

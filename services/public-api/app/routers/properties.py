@@ -3,7 +3,7 @@
 GET /api/properties/{property_id}/detail  — curated detail sections
 POST /api/properties/{property_id}/request-scrape  — request property scrape
 GET /api/properties/{property_id}/lite-report/pdf  — lite report PDF download
-GET /api/properties/{property_id}/full/pdf  — full report PDF download (auth + credits)
+POST /api/properties/{property_id}/full/pdf  — full report PDF download (auth + credits)
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import json
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pdf_renderer import (
@@ -212,15 +212,19 @@ async def property_detail(
     return await _get_property_detail(property_id, db)
 
 
-@router.get("/{property_id}/full/pdf")
+@router.post("/{property_id}/full/pdf")
 @limiter.limit("60/hour")
 async def property_full_pdf(
     request: Request,
     property_id: UUID,
     current_user: UserRow = Depends(require_credits_available),
     db: asyncpg.Connection = Depends(get_db),
+    idempotency_key_header: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> StreamingResponse:
     """Download full property report as PDF — requires login + 1 spendable credit.
+
+    This is a POST (not GET) because it mutates state: it debits a credit. A GET
+    could be prefetched or retried by browsers/proxies and silently double-charge.
 
     Flow:
     1. Pre-flight credit check (non-locking, advisory).
@@ -228,6 +232,11 @@ async def property_full_pdf(
     3. Retrieve or generate the PDF.
     4. Atomically debit 1 credit (daily first, then purchased).
     5. Stream PDF to client.
+
+    Idempotency: the client sends an ``Idempotency-Key`` header, stable for one
+    download attempt. Retries of the same attempt reuse the key and are debited
+    at most once (see ``debit_credit``). A new, intentional re-download uses a
+    fresh key and is charged again.
 
     If the atomic debit fails (race: credits drained by concurrent session
     between steps 1 and 4) the request returns 403 and the PDF is not streamed.
@@ -282,11 +291,11 @@ async def property_full_pdf(
         await run_in_threadpool(put_report_pdf_bytes, object_key, pdf_data)
 
     # Atomic debit — only after PDF is in hand.
-    # The random suffix makes each request unique: this prevents accidental
-    # double-submission (e.g. user clicks twice quickly) via ON CONFLICT
-    # in the same transaction, while still charging 1 credit for intentional
-    # re-downloads of the same report.
-    idempotency_key = f"download:{current_user.id}:{report_id}:{uuid.uuid4().hex[:8]}"
+    # Use the client-supplied Idempotency-Key so retries of the SAME attempt are
+    # charged at most once. Only fall back to a random suffix when the header is
+    # absent (older clients) — those callers get the previous best-effort behaviour.
+    client_key = (idempotency_key_header or "").strip()[:64] or uuid.uuid4().hex[:8]
+    idempotency_key = f"download:{current_user.id}:{report_id}:{client_key}"
     debited = await debit_credit(
         user_id=current_user.id,
         property_id=property_id,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     VICPLAN_CACHE_TTL_HOURS: int = 168
 
     # ── App ───────────────────────────────────────────────────────────────────
+    # Default to development for native/local runs. Production manifests set
+    # ENVIRONMENT=production explicitly.
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "DEBUG"
 
@@ -39,6 +42,20 @@ class Settings(BaseSettings):
     def psycopg2_dsn(self) -> str:
         """Return a plain postgresql:// DSN suitable for psycopg2."""
         return self.DATABASE_URL.replace("postgresql+psycopg2://", "postgresql://")
+
+    @model_validator(mode="after")
+    def _reject_insecure_defaults_in_production(self) -> "Settings":
+        """Refuse to boot in production with known development defaults."""
+        if self.ENVIRONMENT != "production":
+            return self
+        problems: list[str] = []
+        if "devpassword" in self.DATABASE_URL:
+            problems.append("DATABASE_URL still uses the dev password")
+        if problems:
+            raise ValueError(
+                "Insecure production configuration: " + "; ".join(problems)
+            )
+        return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

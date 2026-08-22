@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+_INSECURE_SERVICE_TOKEN = "dev-service-token-change-in-prod"
 
 
 class Settings(BaseSettings):
@@ -40,6 +43,8 @@ class Settings(BaseSettings):
     OPENAI_DAILY_QUOTA: int = 100000
 
     # ── App ───────────────────────────────────────────────────────────────────
+    # Default to development for native/local runs. Production manifests set
+    # ENVIRONMENT=production explicitly, which keeps the safety check intact.
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "DEBUG"
 
@@ -48,6 +53,24 @@ class Settings(BaseSettings):
     def asyncpg_dsn(self) -> str:
         """Return a plain postgresql:// DSN suitable for asyncpg.create_pool."""
         return self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+
+    @model_validator(mode="after")
+    def _reject_insecure_defaults_in_production(self) -> "Settings":
+        """Refuse to boot in production with known development defaults."""
+        if self.ENVIRONMENT != "production":
+            return self
+        problems: list[str] = []
+        if self.ADMIN_SERVICE_TOKEN == _INSECURE_SERVICE_TOKEN:
+            problems.append("ADMIN_SERVICE_TOKEN is the dev default")
+        if "devpassword" in self.DATABASE_URL:
+            problems.append("DATABASE_URL still uses the dev password")
+        if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+            problems.append("MINIO credentials are the default minioadmin")
+        if problems:
+            raise ValueError(
+                "Insecure production configuration: " + "; ".join(problems)
+            )
+        return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

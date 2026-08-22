@@ -165,6 +165,9 @@ ENVIRONMENT=development
 LOG_LEVEL=DEBUG
 ```
 
+> [!IMPORTANT]
+> The local `minioadmin` defaults are fine for Docker Compose dev, but the cluster secret created by `make k8s-secrets` must use different `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` values.
+
 ### `services/llm-parser-worker/.env`
 
 ```env

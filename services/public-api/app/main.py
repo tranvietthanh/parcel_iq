@@ -42,12 +42,14 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://ozpropertyreport.com",
-        "http://localhost:3000",  # dev
-    ],
+    allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "X-Turnstile-Token"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Turnstile-Token",
+        "Idempotency-Key",
+    ],
     allow_credentials=True,
 )
 

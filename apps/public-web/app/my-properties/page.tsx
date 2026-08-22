@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth, SignInButton } from "@clerk/nextjs";
 import { useApiClient } from "@/lib/api";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 type RequestedItem = {
   property_id: string;
@@ -45,8 +46,12 @@ const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
 
 function StatusBadge({ status }: { status: string }) {
   const config = STATUS_CONFIG[status] ?? { label: status, classes: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" };
+  const isInProgress = status === "PROCESSING" || status === "QUEUING";
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config.classes}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${config.classes}`}>
+      {isInProgress && (
+        <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+      )}
       {config.label}
     </span>
   );
@@ -57,9 +62,23 @@ function RequestedTab() {
   const [data, setData] = useState<RequestedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<{ propertyId: string; message: string } | null>(null);
 
-  const load = useCallback(async (p: number) => {
-    setLoading(true);
+  const turnstileRef = useRef<TurnstileInstance>(null);
+  const turnstileTokenRef = useRef<string | null>(null);
+
+  const consumeTurnstileToken = (): string | null => {
+    const token = turnstileTokenRef.current;
+    if (token) {
+      turnstileTokenRef.current = null;
+      turnstileRef.current?.reset();
+    }
+    return token;
+  };
+
+  const load = useCallback(async (p: number, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.get<RequestedResponse>(
         `/api/properties/my/requested?page=${p}&page_size=20`
@@ -68,13 +87,76 @@ function RequestedTab() {
     } catch (err) {
       console.error("Failed to load requested properties", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [api]);
 
   useEffect(() => {
     load(page);
   }, [load, page]);
+
+  // Background polling when any item is in QUEUING or PROCESSING state
+  useEffect(() => {
+    if (!data) return;
+    const hasInFlight = data.items.some(
+      (item) => item.report_status === "QUEUING" || item.report_status === "PROCESSING"
+    );
+    if (!hasInFlight) return;
+
+    const interval = setInterval(() => {
+      load(page, true);
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [data, load, page]);
+
+  const handleRetry = async (propertyId: string) => {
+    if (retryingId) return;
+    setRetryingId(propertyId);
+    setRetryError(null);
+
+    // Optimistically mark this item as QUEUING
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((item) =>
+          item.property_id === propertyId
+            ? { ...item, report_status: "QUEUING" }
+            : item
+        ),
+      };
+    });
+
+    try {
+      const token = consumeTurnstileToken();
+      await api.post(
+        `/api/properties/${propertyId}/request-scrape`,
+        {},
+        token ? { "X-Turnstile-Token": token } : undefined
+      );
+      // Refresh list to sync with server
+      await load(page, true);
+    } catch (err: unknown) {
+      console.error("Failed to retry property report", err);
+      const message = err instanceof Error ? err.message : "Failed to retry. Please try again.";
+      setRetryError({ propertyId, message });
+      // Revert back to FAILED on error
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item.property_id === propertyId
+              ? { ...item, report_status: "FAILED" }
+              : item
+          ),
+        };
+      });
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -111,7 +193,7 @@ function RequestedTab() {
               <th className="px-4 py-3 text-left">Status</th>
               <th className="px-4 py-3 text-left">Requested</th>
               <th className="px-4 py-3 text-center">Downloaded</th>
-              <th className="px-4 py-3" />
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -149,10 +231,45 @@ function RequestedTab() {
                   {item.report_status === "READY" && item.slug && (
                     <Link
                       href={`/property/${item.slug}`}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                      className="inline-flex items-center text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
                     >
                       View →
                     </Link>
+                  )}
+                  {item.report_status === "FAILED" && (
+                    <div className="flex flex-col items-end">
+                      <button
+                        onClick={() => handleRetry(item.property_id)}
+                        disabled={retryingId === item.property_id}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-900 dark:text-zinc-100 transition-colors disabled:opacity-50 shadow-xs border border-zinc-200/60 dark:border-zinc-700/60"
+                        title="Retry processing for this property"
+                      >
+                        {retryingId === item.property_id ? (
+                          <>
+                            <div className="h-3 w-3 animate-spin rounded-full border border-zinc-400 border-t-zinc-900 dark:border-zinc-500 dark:border-t-zinc-100" />
+                            <span>Retrying...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <span>Retry</span>
+                          </>
+                        )}
+                      </button>
+                      {retryError?.propertyId === item.property_id && (
+                        <p className="mt-1 text-[11px] text-red-500 max-w-[150px] truncate" title={retryError.message}>
+                          {retryError.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {(item.report_status === "QUEUING" || item.report_status === "PROCESSING") && (
+                    <span className="inline-flex items-center gap-1 text-xs text-zinc-400 dark:text-zinc-500 italic">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      Processing...
+                    </span>
                   )}
                 </td>
               </tr>
@@ -160,6 +277,22 @@ function RequestedTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Invisible Turnstile widget for verification tokens */}
+      <Turnstile
+        ref={turnstileRef}
+        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""}
+        options={{ size: "invisible" }}
+        onSuccess={(token) => {
+          turnstileTokenRef.current = token;
+        }}
+        onError={() => {
+          turnstileTokenRef.current = null;
+        }}
+        onExpire={() => {
+          turnstileTokenRef.current = null;
+        }}
+      />
 
       {/* Pagination */}
       {data.pagination.total_pages > 1 && (

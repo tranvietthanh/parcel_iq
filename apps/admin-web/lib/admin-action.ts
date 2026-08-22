@@ -4,8 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 
 const ADMIN_BACKEND_URL =
   process.env.ADMIN_BACKEND_URL || "http://localhost:8082";
-const ADMIN_SERVICE_TOKEN =
-  process.env.ADMIN_SERVICE_TOKEN || "dev-service-token-change-in-prod";
+// No fallback secret — a missing token must fail loudly, never ship a known default.
+const ADMIN_SERVICE_TOKEN = process.env.ADMIN_SERVICE_TOKEN;
 
 /**
  * Base wrapper for all Server Actions.
@@ -18,6 +18,11 @@ export async function adminAction<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
+  // Step 0: Fail closed if the service token isn't configured.
+  if (!ADMIN_SERVICE_TOKEN) {
+    throw new Error("ADMIN_SERVICE_TOKEN is not configured");
+  }
+
   // Step 1: Verify Clerk session and org membership
   const { userId, orgId } = await auth();
   if (!userId || orgId !== process.env.CLERK_ADMIN_ORG_ID) {

@@ -1,3 +1,9 @@
+import os
+
+# Tests run in development mode so the production config guard (which rejects
+# dev-default secrets) does not fire when app.config is imported.
+os.environ.setdefault("ENVIRONMENT", "development")
+
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient

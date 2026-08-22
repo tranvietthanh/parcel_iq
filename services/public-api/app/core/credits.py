@@ -22,19 +22,18 @@ from uuid import UUID
 import asyncpg
 from zoneinfo import ZoneInfo
 
-SYDNEY_TZ = ZoneInfo("Australia/Sydney")
+from app.config import settings
 
-# Default daily grant — overridden by DAILY_CREDIT_GRANT env var at startup
-_DEFAULT_DAILY_GRANT: int = 3
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 
 def get_daily_grant_amount() -> int:
-    """Return the configured daily free-credit grant amount."""
-    import os
-    try:
-        return int(os.environ.get("DAILY_CREDIT_GRANT", _DEFAULT_DAILY_GRANT))
-    except (TypeError, ValueError):
-        return _DEFAULT_DAILY_GRANT
+    """Return the configured daily free-credit grant amount.
+
+    Sourced from validated settings (env var ``DAILY_CREDIT_GRANT``) rather than
+    reading os.environ on every call.
+    """
+    return settings.DAILY_CREDIT_GRANT
 
 
 def _today_au() -> date:
@@ -209,6 +208,16 @@ async def debit_credit(
             "SELECT pg_advisory_xact_lock(hashtext('credit:' || $1::text))",
             str(user_id),
         )
+
+        # Idempotency guard: if this exact key was already debited, treat as a
+        # successful retry and do NOT charge again. Must run inside the advisory
+        # lock so it can't race a concurrent insert of the same key.
+        already_debited = await db.fetchval(
+            "SELECT 1 FROM credit_ledger WHERE idempotency_key = $1",
+            idempotency_key,
+        )
+        if already_debited:
+            return True
 
         # Reconcile day if rolled over
         await db.execute(

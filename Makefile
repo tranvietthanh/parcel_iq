@@ -347,6 +347,15 @@ deploy: ## Push images and deploy to remote K3s (usage: make deploy tag=<tag> [R
 .PHONY: k8s-secrets
 k8s-secrets: ## Apply secrets from .env to remote cluster (never written to disk)
 	@if [ ! -f .env ]; then echo "ERROR: .env file not found. Copy from secrets.example.yaml and fill in values."; exit 1; fi
+	@if [ -z "$(MINIO_ACCESS_KEY)" ] || [ -z "$(MINIO_SECRET_KEY)" ]; then \
+		echo "ERROR: MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set in .env for cluster use."; \
+		exit 1; \
+	fi
+	@if [ "$(MINIO_ACCESS_KEY)" = "minioadmin" ] || [ "$(MINIO_SECRET_KEY)" = "minioadmin" ]; then \
+		echo "ERROR: Cluster MinIO credentials must not use the default minioadmin values."; \
+		echo "       Set MINIO_ACCESS_KEY and MINIO_SECRET_KEY to unique production values before running make k8s-secrets."; \
+		exit 1; \
+	fi
 	kubectl create secret generic ozpr-secrets \
 		--from-env-file=.env \
 		-n ozpropertyreport \
