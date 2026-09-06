@@ -23,6 +23,17 @@ def _report_update_params(mock_cursor: MagicMock) -> tuple:
     raise AssertionError("Parsed-insights UPDATE was not executed.")
 
 
+@pytest.fixture(autouse=True)
+def mock_rate_limiter_and_quota():
+    """Ensure integration tests do not depend on or modify live Redis."""
+    with (
+        patch("app.tasks.is_daily_quota_exhausted", return_value=False),
+        patch("app.tasks.wait_for_token", return_value=None),
+        patch("app.tasks.record_llm_request", return_value=None),
+    ):
+        yield
+
+
 class TestParseWithLlmTask:
     """Test the full parse_with_llm task pipeline with mocked externals."""
 
@@ -145,9 +156,7 @@ class TestParseWithLlmTask:
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
-    def test_no_report_found_raises(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
-    ) -> None:
+    def test_no_report_found_raises(self, mock_gemini: MagicMock, mock_db_conn: MagicMock) -> None:
         """Missing report row → ValueError."""
         from app.tasks import parse_with_llm
 
@@ -167,9 +176,7 @@ class TestParseWithLlmTask:
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
-    def test_stores_model_version(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
-    ) -> None:
+    def test_stores_model_version(self, mock_gemini: MagicMock, mock_db_conn: MagicMock) -> None:
         """The llm_model_version column should be set from active provider."""
         from app.tasks import parse_with_llm
 
@@ -304,9 +311,7 @@ class TestTriggerStateRefreshTask:
 
     @patch("app.tasks.celery_app")
     @patch("app.tasks.get_db_connection")
-    def test_dispatches_scrape_tasks(
-        self, mock_db_conn: MagicMock, mock_celery: MagicMock
-    ) -> None:
+    def test_dispatches_scrape_tasks(self, mock_db_conn: MagicMock, mock_celery: MagicMock) -> None:
         """Should query properties and dispatch scrape tasks."""
         from app.tasks import trigger_state_refresh
 

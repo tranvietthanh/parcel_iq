@@ -1,9 +1,11 @@
-export type GeminiQuotaStats = {
+export type LlmQuotaStats = {
   used_today: number;
   daily_limit: number;
   remaining: number;
   reset_time: string; // ISO 8601 format
 };
+
+export type GeminiQuotaStats = LlmQuotaStats;
 
 export type DashboardStats = {
   total_properties: number;
@@ -13,6 +15,7 @@ export type DashboardStats = {
   lga_coverage: number;
   sales_mtd: number;
   revenue_mtd: number;
+  llm_quota?: LlmQuotaStats;
   gemini_quota: GeminiQuotaStats;
 };
 

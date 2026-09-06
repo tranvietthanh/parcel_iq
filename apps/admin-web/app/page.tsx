@@ -6,7 +6,11 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const stats = await getStats();
-  const quotaPercentage = Math.round((stats.gemini_quota.used_today / stats.gemini_quota.daily_limit) * 100);
+  const quota = stats.llm_quota ?? stats.gemini_quota;
+  const quotaPercentage =
+    quota.daily_limit > 0
+      ? Math.round((quota.used_today / quota.daily_limit) * 100)
+      : 100;
 
   return (
     <div className="space-y-8">
@@ -57,13 +61,13 @@ export default async function DashboardPage() {
         />
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader>
-            <h3 className="text-sm font-medium text-gray-400">Gemini API Quota</h3>
+            <h3 className="text-sm font-medium text-gray-400">LLM API Quota</h3>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-semibold text-white">
-                  {stats.gemini_quota.used_today}/{stats.gemini_quota.daily_limit}
+                  {quota.used_today}/{quota.daily_limit}
                 </span>
                 <span className={`text-sm font-medium ${
                   quotaPercentage >= 90 ? 'text-red-400' :
@@ -84,7 +88,7 @@ export default async function DashboardPage() {
                 />
               </div>
               <p className="text-xs text-gray-500">
-                {stats.gemini_quota.remaining} requests remaining
+                {quota.remaining} requests remaining
               </p>
             </div>
           </CardContent>

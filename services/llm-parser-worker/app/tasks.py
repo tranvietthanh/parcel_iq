@@ -14,19 +14,36 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timedelta, timezone
+
+from celery.exceptions import MaxRetriesExceededError
 
 from app.celery_app import celery_app
+from app.config import settings
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.prompts.user_prompt import build_user_prompt
 from app.schemas.confidence import compute_confidence
 from app.schemas.llm_output import LlmOutput
 from app.services.db import get_db_connection
 from app.services.llm_client import llm_client
+from app.services.rate_limiter import (
+    is_daily_quota_exhausted,
+    record_llm_request,
+    wait_for_token,
+)
 
 logger = logging.getLogger(__name__)
 
 STATE_REFRESH_BATCH_SIZE = 500
 MAX_DLQ_RETRIES = 5
+
+
+def _seconds_until_next_utc_midnight() -> int:
+    """Return number of seconds remaining until the next UTC midnight."""
+    now = datetime.now(timezone.utc)
+    tomorrow_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    seconds = int((tomorrow_midnight - now).total_seconds())
+    return max(60, seconds)
 
 
 def _active_model_name() -> str:
@@ -102,8 +119,7 @@ def parse_with_llm(
         # 1. Mark as PROCESSING
         with db.cursor() as cur:
             cur.execute(
-                "UPDATE property_reports SET status='PROCESSING', updated_at=NOW() "
-                "WHERE id=%s",
+                "UPDATE property_reports SET status='PROCESSING', updated_at=NOW() WHERE id=%s",
                 (property_report_id,),
             )
             db.commit()
@@ -123,7 +139,13 @@ def parse_with_llm(
         user_prompt = build_user_prompt(address_string, raw_data)
 
         # 4. Call LLM API (blocks until a rate limit token is available)
+        if is_daily_quota_exhausted():
+            raise RuntimeError(
+                f"DAILY_QUOTA_EXCEEDED: {settings.LLM_DAILY_QUOTA} requests already used today"
+            )
+        wait_for_token()
         raw_json_str = llm_client.generate_json(SYSTEM_PROMPT, user_prompt)
+        record_llm_request()
         cleaned_json_str = _extract_json_payload(raw_json_str)
 
         # 5. Parse + validate with Pydantic v2
@@ -131,8 +153,7 @@ def parse_with_llm(
             parsed = LlmOutput.model_validate_json(cleaned_json_str)
         except Exception as e:
             raise ValueError(
-                f"LLM output failed Pydantic validation: {e}\n"
-                f"Raw: {raw_json_str[:500]}"
+                f"LLM output failed Pydantic validation: {e}\nRaw: {raw_json_str[:500]}"
             ) from e
 
         # 6. Compute confidence scores
@@ -164,9 +185,7 @@ def parse_with_llm(
             )
             db.commit()
 
-        logger.info(
-            "[LLM] %s → %s (confidence=%s)", address_string, new_status, confidence.overall
-        )
+        logger.info("[LLM] %s → %s (confidence=%s)", address_string, new_status, confidence.overall)
 
         # 9. Dispatch email notification if requested by a user
         try:
@@ -178,12 +197,13 @@ def parse_with_llm(
                     JOIN properties p ON p.id = pr.property_id
                     WHERE pr.id = %s
                     """,
-                    (property_report_id,)
+                    (property_report_id,),
                 )
                 user_row = cur.fetchone()
 
             if user_row and user_row.get("email"):
                 from app.services.email import send_report_ready_email
+
                 send_report_ready_email(
                     to_email=user_row["email"],
                     address=address_string,
@@ -207,12 +227,60 @@ def parse_with_llm(
 
         if "RATE_LIMIT" in err_msg or "429" in err_msg:
             logger.warning("[LLM] Rate limited on %s. Retrying in 65s.", address_string)
-            raise self.retry(exc=sanitized_exc)
+            with db.cursor() as cur:
+                cur.execute(
+                    "UPDATE property_reports SET updated_at=NOW() WHERE id=%s",
+                    (property_report_id,),
+                )
+                db.commit()
+            try:
+                raise self.retry(exc=sanitized_exc)
+            except MaxRetriesExceededError:
+                with db.cursor() as cur:
+                    cur.execute(
+                        """UPDATE property_reports
+                           SET status='FAILED', error_message=%s, updated_at=NOW()
+                           WHERE id=%s""",
+                        (err_msg[:1000], property_report_id),
+                    )
+                    db.commit()
+                logger.error(
+                    "[LLM] FAILED after max rate-limit retries: %s — %s",
+                    address_string,
+                    err_msg,
+                )
+                raise
 
         if "DAILY_QUOTA_EXCEEDED" in err_msg:
             logger.warning("[LLM] Daily quota reached. Retrying %s later.", address_string)
-            # Retry with longer delay — next day
-            raise self.retry(exc=sanitized_exc, countdown=3600)
+            seconds_until_midnight = _seconds_until_next_utc_midnight()
+            with db.cursor() as cur:
+                cur.execute(
+                    "UPDATE property_reports SET updated_at=NOW() WHERE id=%s",
+                    (property_report_id,),
+                )
+                db.commit()
+            try:
+                raise self.retry(
+                    exc=sanitized_exc,
+                    countdown=seconds_until_midnight,
+                    max_retries=24,
+                )
+            except MaxRetriesExceededError:
+                with db.cursor() as cur:
+                    cur.execute(
+                        """UPDATE property_reports
+                           SET status='FAILED', error_message=%s, updated_at=NOW()
+                           WHERE id=%s""",
+                        (err_msg[:1000], property_report_id),
+                    )
+                    db.commit()
+                logger.error(
+                    "[LLM] FAILED after max quota retries: %s — %s",
+                    address_string,
+                    err_msg,
+                )
+                raise
 
         if self.request.retries >= self.max_retries:
             # Exhausted retries — mark as FAILED
@@ -291,9 +359,7 @@ def trigger_state_refresh(self, state: str) -> dict:
                         state,
                     )
 
-        logger.info(
-            "[REFRESH] Dispatched %d scrape tasks for state=%s", dispatched, state
-        )
+        logger.info("[REFRESH] Dispatched %d scrape tasks for state=%s", dispatched, state)
         return {"state": state, "dispatched": dispatched}
 
     except Exception as exc:

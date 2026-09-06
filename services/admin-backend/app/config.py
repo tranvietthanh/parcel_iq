@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     GOOGLE_MAPS_API_KEY: str | None = None
     PROPERTY_IMAGE_REQUEST_TIMEOUT_SECONDS: float = 4.0
 
-    # ── LLM quota monitoring (matches llm-parser-worker OpenAI settings) ─────
-    OPENAI_DAILY_QUOTA: int = 100000
+    # ── LLM quota monitoring (matches llm-parser-worker settings) ────────────
+    LLM_DAILY_QUOTA: int = 100000
 
     # ── App ───────────────────────────────────────────────────────────────────
     # Default to development for native/local runs. Production manifests set
@@ -67,9 +67,7 @@ class Settings(BaseSettings):
         if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
             problems.append("MINIO credentials are the default minioadmin")
         if problems:
-            raise ValueError(
-                "Insecure production configuration: " + "; ".join(problems)
-            )
+            raise ValueError("Insecure production configuration: " + "; ".join(problems))
         return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}

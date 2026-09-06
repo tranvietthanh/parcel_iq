@@ -1,13 +1,16 @@
 from pydantic import BaseModel
 
 
-class GeminiQuotaStats(BaseModel):
-    """LLM API quota statistics. Field name kept as `gemini_quota` for admin-web compatibility."""
+class LlmQuotaStats(BaseModel):
+    """LLM API quota statistics."""
 
     used_today: int
     daily_limit: int
     remaining: int
     reset_time: str  # ISO 8601 format: "2026-03-01T00:00:00Z"
+
+
+GeminiQuotaStats = LlmQuotaStats  # Backward-compatible alias
 
 
 class DashboardStats(BaseModel):
@@ -20,4 +23,5 @@ class DashboardStats(BaseModel):
     lga_coverage: int
     sales_mtd: int
     revenue_mtd: float
-    gemini_quota: GeminiQuotaStats
+    llm_quota: LlmQuotaStats
+    gemini_quota: LlmQuotaStats  # Deprecated alias kept for rollout compatibility

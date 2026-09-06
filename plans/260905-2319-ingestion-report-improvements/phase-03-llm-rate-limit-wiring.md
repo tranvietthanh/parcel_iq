@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Wire Rate Limiter & Daily Quota Into the Call Path"
-status: pending
+status: completed
 priority: P1
 effort: "2d"
 dependencies: [1]
@@ -227,14 +227,14 @@ exist in this repo's tooling. Instead:
 
 ## Success Criteria
 
-- [ ] `is_daily_quota_exhausted()` is checked, and `record_llm_request()` is called, exactly once per successful `parse_with_llm` provider call — a failed/retried attempt does not increment the counter.
-- [ ] Setting `LLM_MAX_RPM=1` and firing 3 tasks in quick succession measurably serializes them (verified via log timestamps or a test with a fake clock).
-- [ ] Setting `LLM_DAILY_QUOTA=0` causes every `parse_with_llm` call that day to raise `DAILY_QUOTA_EXCEEDED`, retry with a midnight-aligned countdown, and — once `max_retries=24` is exhausted without the day rolling over — mark the report `FAILED` with a populated `error_message`. It must never remain silently stuck in `PROCESSING`.
-- [ ] A report whose retry is scheduled with a non-trivial countdown does not get double-dispatched by `check_dlq` while the retry is pending (verified by a test asserting `updated_at` is bumped before the retry is scheduled).
-- [ ] All Redis keys used by the rate limiter are provider-neutral (no `openai:` prefix left in `rate_limiter.py` or `admin-backend/app/routers/stats.py`).
-- [ ] Admin dashboard quota widget reflects real usage after an LLM call, and keeps working against either an old (`gemini_quota`-only) or new (`llm_quota`-emitting) admin-backend pod during a rolling deploy.
-- [ ] `apps/admin-web/app/page.tsx` has zero remaining references to a hardcoded "Gemini" label.
-- [ ] Existing + updated unit and integration tests pass in both `llm-parser-worker` and `admin-backend`.
+- [x] `is_daily_quota_exhausted()` is checked, and `record_llm_request()` is called, exactly once per successful `parse_with_llm` provider call — a failed/retried attempt does not increment the counter.
+- [x] Setting `LLM_MAX_RPM=1` and firing 3 tasks in quick succession measurably serializes them (verified via log timestamps or a test with a fake clock).
+- [x] Setting `LLM_DAILY_QUOTA=0` causes every `parse_with_llm` call that day to raise `DAILY_QUOTA_EXCEEDED`, retry with a midnight-aligned countdown, and — once `max_retries=24` is exhausted without the day rolling over — mark the report `FAILED` with a populated `error_message`. It must never remain silently stuck in `PROCESSING`.
+- [x] A report whose retry is scheduled with a non-trivial countdown does not get double-dispatched by `check_dlq` while the retry is pending (verified by a test asserting `updated_at` is bumped before the retry is scheduled).
+- [x] All Redis keys used by the rate limiter are provider-neutral (no `openai:` prefix left in `rate_limiter.py` or `admin-backend/app/routers/stats.py`).
+- [x] Admin dashboard quota widget reflects real usage after an LLM call, and keeps working against either an old (`gemini_quota`-only) or new (`llm_quota`-emitting) admin-backend pod during a rolling deploy.
+- [x] `apps/admin-web/app/page.tsx` has zero remaining references to a hardcoded "Gemini" label.
+- [x] Existing + updated unit and integration tests pass in both `llm-parser-worker` and `admin-backend`.
 
 ## Risk Assessment
 
