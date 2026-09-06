@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Fix ABS _add_growth_rates() No-Op Bug"
-status: pending
+status: completed
 priority: P1
 effort: "0.75d"
 dependencies: []
@@ -134,10 +134,10 @@ def _has_usable_cached_demographics(enriched: dict) -> bool:
 
 ## Success Criteria
 
-- [ ] `_add_growth_rates()` has a real, non-empty body with the consecutive-year-pair guard; `_has_usable_cached_demographics()` has no unreachable code after its `return`.
-- [ ] New unit tests prove: growth fields populate correctly for consecutive years, are skipped for coverage gaps, and a pre-fix cached blob is correctly judged unusable so it self-heals.
-- [ ] A real property whose LGA was cached **before this fix shipped** shows non-null, calendar-consecutive `population_growth_pct_yoy` (etc.) after its next scrape — not just a property that happens to hit a fresh, never-cached LGA.
-- [ ] `uv run pytest services/scraper-worker/tests/unit/ -v` passes.
+- [x] `_add_growth_rates()` has a real, non-empty body with the consecutive-year-pair guard; `_has_usable_cached_demographics()` has no unreachable code after its `return`.
+- [x] New unit tests prove: growth fields populate correctly for consecutive years, are skipped for coverage gaps, and a pre-fix cached blob is correctly judged unusable so it self-heals.
+- [x] A real property whose LGA was cached **before this fix shipped** shows non-null, calendar-consecutive `population_growth_pct_yoy` (etc.) after its next scrape — not just a property that happens to hit a fresh, never-cached LGA.
+- [x] `uv run pytest services/scraper-worker/tests/unit/ -v` passes.
 
 ## Risk Assessment
 

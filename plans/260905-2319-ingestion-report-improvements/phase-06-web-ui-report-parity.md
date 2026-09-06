@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "Web UI Report Parity"
-status: pending
+status: completed
 priority: P2
 effort: "2d"
 dependencies: []
@@ -189,12 +189,12 @@ backend schema; without this, `tsc` fails once the new components consume
 
 ## Success Criteria
 
-- [ ] An unauthenticated `GET /api/properties/{id}/detail` or `/slug/{slug}/detail` never includes `narrative`, `demographic_trend_analysis`, `roi_scenarios`, or `infrastructure`, even when the underlying report has that data.
-- [ ] An authenticated request to the same endpoints includes all four when present in `llm_parsed_insights`.
-- [ ] `GET /api/saved` includes all four fields for its (already-authenticated) caller.
-- [ ] Property detail page on `apps/public-web` visibly renders all 4 new sections for a logged-in user viewing a property with full LLM data, and none of them for a logged-out user viewing the same property.
-- [ ] Property detail page renders unchanged (no broken sections) for a property still `PROCESSING`/`FAILED`.
-- [ ] `pnpm --filter public-web test --run` (including the new `PropertyDetail.test.tsx`) and the relevant `public-api` pytest suites (`test_properties.py` and the `saved.py` test) both pass.
+- [x] An unauthenticated `GET /api/properties/{id}/detail` or `/slug/{slug}/detail` never includes `narrative`, `demographic_trend_analysis`, `roi_scenarios`, or `infrastructure`, even when the underlying report has that data.
+- [x] An authenticated request to the same endpoints includes all four when present in `llm_parsed_insights`.
+- [x] `GET /api/saved` includes all four fields for its (already-authenticated) caller.
+- [x] Property detail page on `apps/public-web` visibly renders all 4 new sections for a logged-in user viewing a property with full LLM data, and none of them for a logged-out user viewing the same property.
+- [x] Property detail page renders unchanged (no broken sections) for a property still `PROCESSING`/`FAILED`.
+- [x] `pnpm --filter public-web test` (including the new `PropertyDetail.test.tsx`) and the relevant `public-api` pytest suites (`test_properties.py` and the `saved.py` test) both pass.
 
 ## Risk Assessment
 

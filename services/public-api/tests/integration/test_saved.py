@@ -145,6 +145,7 @@ async def test_list_saved_returns_property_detail_shape():
             "id": PROP_ID,
             "address_string": "8 St Lawrence Close, Werribee VIC 3030",
             "state": "VIC",
+            "slug": "8-st-lawrence-close-werribee-vic-3030",
             "report_status": "READY",
             "llm_parsed_insights": {
                 "education": {
@@ -155,6 +156,17 @@ async def test_list_saved_returns_property_detail_shape():
                     "nbn_tech_type": "FTTP",
                     "nbn_service_status": "Serviceable",
                 },
+                "narrative": {
+                    "executive_summary": "Strong investment potential in growth corridor.",
+                },
+                "demographic_trend_analysis": {
+                    "population_momentum": "ACCELERATING",
+                },
+                "roi_scenarios": {
+                    "disclaimer": "Projections are indicative only.",
+                    "scenarios": [],
+                },
+                "infrastructure": [{"type": "TRANSPORT", "description": "New rail station"}],
             },
             "raw_scraped_data": {
                 "flood_risk": "LOW",
@@ -183,6 +195,13 @@ async def test_list_saved_returns_property_detail_shape():
     assert len(body) == 1
     assert body[0]["id"] == str(PROP_ID)
     assert body[0]["address"] == "8 St Lawrence Close, Werribee VIC 3030"
+    assert body[0]["slug"] == "8-st-lawrence-close-werribee-vic-3030"
     assert body[0]["report_status"] == "READY"
     assert body[0]["education"]["primary_schools"][0]["name"] == "Werribee Primary"
     assert body[0]["connectivity"]["nbn_tech_type"] == "FTTP"
+    assert body[0]["narrative"] == {
+        "executive_summary": "Strong investment potential in growth corridor."
+    }
+    assert body[0]["demographic_trend_analysis"] == {"population_momentum": "ACCELERATING"}
+    assert body[0]["roi_scenarios"]["disclaimer"] == "Projections are indicative only."
+    assert body[0]["infrastructure"] == [{"type": "TRANSPORT", "description": "New rail station"}]

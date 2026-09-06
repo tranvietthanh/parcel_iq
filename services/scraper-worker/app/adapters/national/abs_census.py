@@ -98,9 +98,9 @@ logger = logging.getLogger(__name__)
 ABS_BASE = "https://data.api.abs.gov.au"
 
 # Dataflow identifier
-DATAFLOW_ID      = "ABS_REGIONAL_LGA2021"
+DATAFLOW_ID = "ABS_REGIONAL_LGA2021"
 DATAFLOW_VERSION = "1.5.0"
-DATAFLOW_AGENCY  = "ABS"
+DATAFLOW_AGENCY = "ABS"
 
 # REGIONTYPE filter value for LGA 2021 boundaries
 REGION_TYPE_LGA = "LGA2021"
@@ -110,36 +110,36 @@ REGION_TYPE_LGA = "LGA2021"
 # Grouped here for clarity; only these are extracted from the (large) response.
 INVESTOR_MEASURES: dict[str, str] = {
     # Population & demographics
-    "ERP_P_20":   "total_population",
-    "ERP_21":     "population_density_per_sqkm",
-    "ERP_23":     "median_age_persons_years",
-    "BD_2":       "registered_births",
-    "BD_3":       "total_fertility_rate",
-    "BD_5":       "standardised_death_rate_per_1000",
+    "ERP_P_20": "total_population",
+    "ERP_21": "population_density_per_sqkm",
+    "ERP_23": "median_age_persons_years",
+    "BD_2": "registered_births",
+    "BD_3": "total_fertility_rate",
+    "BD_5": "standardised_death_rate_per_1000",
     "MIGRATION_2": "internal_migration_arrivals",
     "MIGRATION_3": "internal_migration_departures",
     "MIGRATION_4": "net_internal_migration",
     "MIGRATION_5": "overseas_migration_arrivals",
     "MIGRATION_7": "net_overseas_migration",
     # Economy & business
-    "CABEE_5":    "total_businesses",
-    "CABEE_10":   "total_business_entries",
-    "CABEE_15":   "total_business_exits",
+    "CABEE_5": "total_businesses",
+    "CABEE_10": "total_business_entries",
+    "CABEE_15": "total_business_exits",
     # Housing & building
-    "HOUSES_2":   "established_house_transfers_count",
-    "HOUSES_3":   "established_house_median_price_aud",
-    "HOUSES_4":   "attached_dwelling_transfers_count",
-    "HOUSES_5":   "attached_dwelling_median_price_aud",
+    "HOUSES_2": "established_house_transfers_count",
+    "HOUSES_3": "established_house_median_price_aud",
+    "HOUSES_4": "attached_dwelling_transfers_count",
+    "HOUSES_5": "attached_dwelling_median_price_aud",
     "BUILDING_4": "total_dwelling_approvals",
     "BUILDING_2": "private_house_approvals",
     "BUILDING_10": "total_building_approvals_value_aud_millions",
     # Income & welfare
-    "PENSION_3":  "dva_age_pension_recipients",
-    "PENSION_4":  "dva_service_pension_recipients",
+    "PENSION_3": "dva_age_pension_recipients",
+    "PENSION_4": "dva_service_pension_recipients",
     # Education
-    "PRESCH_8":   "children_enrolled_preschool",
+    "PRESCH_8": "children_enrolled_preschool",
     # Environment
-    "SOLAR_7":    "solar_panel_installations",
+    "SOLAR_7": "solar_panel_installations",
 }
 
 # Reverse lookup: label → measure code (for reference, not used in hot path)
@@ -162,7 +162,8 @@ class AbsCensusAdapter(BaseAdapter):
         if not lga_code:
             logger.warning(
                 "Could not resolve ABS LGA region for lat=%s lng=%s",
-                job["latitude"], job["longitude"],
+                job["latitude"],
+                job["longitude"],
             )
             return {"demographics": None}
 
@@ -324,9 +325,7 @@ class AbsCensusAdapter(BaseAdapter):
                 except (KeyError, TypeError):
                     return []
 
-    def _build_dimension_lookups(
-        self, data: dict
-    ) -> tuple[dict[str, int], dict[str, list[str]]]:
+    def _build_dimension_lookups(self, data: dict) -> tuple[dict[str, int], dict[str, list[str]]]:
         """Build two lookup structures from the response dimensions.
 
         Returns:
@@ -340,9 +339,7 @@ class AbsCensusAdapter(BaseAdapter):
         for dim in dims:
             dim_id = dim.get("id", "").upper()
             dim_positions[dim_id] = dim.get("keyPosition", len(dim_positions))
-            dim_code_lists[dim_id] = [
-                v.get("id", "") for v in dim.get("values", [])
-            ]
+            dim_code_lists[dim_id] = [v.get("id", "") for v in dim.get("values", [])]
 
         return dim_positions, dim_code_lists
 
@@ -378,12 +375,12 @@ class AbsCensusAdapter(BaseAdapter):
 
         dim_positions, dim_code_lists = self._build_dimension_lookups(data)
 
-        measure_pos    = dim_positions.get("MEASURE", 0)
-        time_pos       = dim_positions.get("TIME_PERIOD", 4)
+        measure_pos = dim_positions.get("MEASURE", 0)
+        time_pos = dim_positions.get("TIME_PERIOD", 4)
         regiontype_pos = dim_positions.get("REGIONTYPE", 1)
 
-        measure_codes  = dim_code_lists.get("MEASURE", [])
-        time_codes     = dim_code_lists.get("TIME_PERIOD", [])
+        measure_codes = dim_code_lists.get("MEASURE", [])
+        time_codes = dim_code_lists.get("TIME_PERIOD", [])
         regiontype_codes = dim_code_lists.get("REGIONTYPE", [])
 
         # Resolve LGA name from dimension metadata
@@ -451,24 +448,27 @@ class AbsCensusAdapter(BaseAdapter):
                 # after the REGIONTYPE filter but guard anyway
                 logger.debug(
                     "Duplicate obs for LGA %s measure=%s year=%s — keeping first",
-                    lga_code, label, year,
+                    lga_code,
+                    label,
+                    year,
                 )
 
         # Sort years chronologically
         sorted_years = sorted(time_series.keys())
-        
+
         # Filter out years with insufficient data for investment analysis.
         # Require either total_population OR at least 5 meaningful metrics.
         # This excludes partial years (e.g., 2025 with only DVA pension data)
         # and early years with limited data coverage.
         filtered_years = [
-            year for year in sorted_years
+            year
+            for year in sorted_years
             if (
                 "total_population" in time_series[year]  # Core metric present
                 or len(time_series[year]) >= 8  # Or sufficient data points
             )
         ]
-        
+
         latest_year = filtered_years[-1] if filtered_years else None
 
         # Compute derived growth metrics from the time series where possible
@@ -483,14 +483,15 @@ class AbsCensusAdapter(BaseAdapter):
             "latest": time_series_final.get(latest_year, {}) if latest_year else {},
         }
 
+
 # ── Derived metrics helpers ──────────────────────────────────────────────────
 
 # Measures for which we compute year-on-year % growth in the time series.
 _GROWTH_RATE_MEASURES: list[tuple[str, str]] = [
-    ("total_population",                   "population_growth_pct_yoy"),
+    ("total_population", "population_growth_pct_yoy"),
     ("established_house_median_price_aud", "house_price_growth_pct_yoy"),
-    ("total_businesses",                   "business_count_growth_pct_yoy"),
-    ("total_dwelling_approvals",           "dwelling_approvals_growth_pct_yoy"),
+    ("total_businesses", "business_count_growth_pct_yoy"),
+    ("total_dwelling_approvals", "dwelling_approvals_growth_pct_yoy"),
 ]
 
 
@@ -503,25 +504,57 @@ def _add_growth_rates(
     For each measure in _GROWTH_RATE_MEASURES, computes:
         growth_pct = (current - previous) / previous * 100
     and adds it to the current year's dict under the growth label.
-    Years without a prior year or without data for both years are skipped.
+    Years without a prior year, non-consecutive years, or without data
+    for both years are skipped.
     """
-
-
-def _has_usable_cached_demographics(enriched: dict) -> bool:
-    """Return True only when cached demographics include parsed ABS content."""
-    if not isinstance(enriched, dict) or not enriched:
-        return False
-
-    latest = enriched.get("latest")
-    time_series = enriched.get("time_series")
-    return isinstance(latest, dict) and isinstance(time_series, dict) and bool(time_series)
     for i, year in enumerate(sorted_years):
         if i == 0:
             continue
         prev_year = sorted_years[i - 1]
+        try:
+            if int(year) - int(prev_year) != 1:
+                continue  # coverage gap -- not a real YoY comparison
+        except (ValueError, TypeError):
+            continue
+
         for measure_label, growth_label in _GROWTH_RATE_MEASURES:
             curr = time_series[year].get(measure_label)
             prev = time_series[prev_year].get(measure_label)
             if curr is not None and prev and prev != 0:
                 growth = round((curr - prev) / prev * 100, 2)
                 time_series[year][growth_label] = growth
+
+
+def _has_usable_cached_demographics(enriched: dict) -> bool:
+    """Return True only when cached demographics include parsed ABS content
+    with growth rates already computed where expected.
+
+    A multi-year blob with zero growth-rate keys anywhere in it was written
+    by the pre-fix no-op _add_growth_rates() -- treat it as stale so it
+    refreshes via the normal cache-miss path instead of needing a backfill.
+    """
+    if not isinstance(enriched, dict) or not enriched:
+        return False
+
+    latest = enriched.get("latest")
+    time_series = enriched.get("time_series")
+    if not (isinstance(latest, dict) and isinstance(time_series, dict) and bool(time_series)):
+        return False
+
+    if len(time_series) >= 2:
+        numeric_years = sorted(
+            [int(y) for y in time_series.keys() if isinstance(y, str) and y.isdigit()]
+        )
+        has_consecutive_years = any(
+            numeric_years[i] - numeric_years[i - 1] == 1 for i in range(1, len(numeric_years))
+        )
+        if has_consecutive_years:
+            growth_labels = {label for _, label in _GROWTH_RATE_MEASURES}
+            has_any_growth_key = any(
+                isinstance(year_data, dict) and bool(growth_labels & year_data.keys())
+                for year_data in time_series.values()
+            )
+            if not has_any_growth_key:
+                return False
+
+    return True

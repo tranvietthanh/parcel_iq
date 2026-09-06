@@ -25,3 +25,7 @@ class PropertyDetail(BaseModel):
     risk_factors: dict | None = None
     zoning_and_planning: dict | None = None
     demographic_snapshot: dict | None = None
+    narrative: dict | None = None
+    demographic_trend_analysis: dict | None = None
+    roi_scenarios: dict | None = None
+    infrastructure: list | None = None

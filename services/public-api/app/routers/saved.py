@@ -100,22 +100,27 @@ async def list_saved(
 
     results: list[PropertyDetail] = []
     for row in rows:
-        insights = _normalize_insights(row.get("llm_parsed_insights")) or {}
-        raw_scraped = _normalize_insights(row.get("raw_scraped_data")) or {}
-        detail_sections = _build_detail_sections(insights, raw_scraped)
+        row_dict = dict(row) if not isinstance(row, dict) else row
+        insights = _normalize_insights(row_dict.get("llm_parsed_insights")) or {}
+        raw_scraped = _normalize_insights(row_dict.get("raw_scraped_data")) or {}
+        detail_sections = _build_detail_sections(insights, raw_scraped, include_full_sections=True)
 
         results.append(
             PropertyDetail(
-                id=row["id"],
-                address=row["address_string"],
-                state=row["state"],
-                slug=row["slug"],
-                report_status=row["report_status"],
+                id=row_dict["id"],
+                address=row_dict["address_string"],
+                state=row_dict["state"],
+                slug=row_dict.get("slug"),
+                report_status=row_dict.get("report_status"),
                 education=detail_sections["education"],
                 connectivity=detail_sections["connectivity"],
                 risk_factors=detail_sections["risk_factors"],
                 zoning_and_planning=detail_sections["zoning_and_planning"],
                 demographic_snapshot=detail_sections["demographic_snapshot"],
+                narrative=detail_sections["narrative"],
+                demographic_trend_analysis=detail_sections["demographic_trend_analysis"],
+                roi_scenarios=detail_sections["roi_scenarios"],
+                infrastructure=detail_sections["infrastructure"],
             )
         )
     return results

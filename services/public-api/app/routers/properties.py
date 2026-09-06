@@ -30,7 +30,7 @@ from app.core.credits import debit_credit, get_spendable_credits
 from app.core.rate_limit import limiter
 from app.middleware.turnstile import verify_turnstile
 from app.celery import celery_app
-from app.dependencies import get_current_user, get_db, get_optional_user, require_credits_available
+from app.dependencies import get_db, get_optional_user, require_credits_available
 from app.routers.my_properties import get_or_create_anon_id
 from app.schemas.property import (
     PropertyDetail,
@@ -114,7 +114,7 @@ async def lite_report_pdf(
 
     # Extract raw scraped data
     raw_scraped = _normalize_insights(row.get("raw_scraped_data"))
-    
+
     if not raw_scraped:
         raise HTTPException(
             status_code=400,
@@ -131,7 +131,7 @@ async def lite_report_pdf(
     # Check MinIO cache first
     object_key = build_report_pdf_object_key(str(report_id), "lite")
     exists = await run_in_threadpool(report_pdf_exists, object_key)
-    
+
     if exists:
         # Return cached PDF from MinIO
         pdf_data = await run_in_threadpool(get_report_pdf_bytes, object_key)
@@ -142,7 +142,7 @@ async def lite_report_pdf(
             raw_data=raw_scraped,
             address=row["address_string"] or "Property Report",
         )
-        
+
         # Cache in MinIO for future requests
         await run_in_threadpool(put_report_pdf_bytes, object_key, pdf_data)
 
@@ -156,30 +156,43 @@ async def lite_report_pdf(
     )
 
 
-async def _get_property_detail(property_id: UUID, db: asyncpg.Connection) -> PropertyDetail:
+async def _get_property_detail(
+    property_id: UUID,
+    db: asyncpg.Connection,
+    current_user: UserRow | None = None,
+) -> PropertyDetail:
     """Helper to fetch and format PropertyDetail."""
     row = await db.fetchrow(DETAIL_QUERY, property_id)
     if not row:
         raise HTTPException(status_code=404, detail="Property not found.")
 
-    insights = _normalize_insights(row.get("llm_parsed_insights")) or {}
-    raw_scraped = _normalize_insights(row.get("raw_scraped_data")) or {}
+    row_dict = dict(row) if not isinstance(row, dict) else row
+    insights = _normalize_insights(row_dict.get("llm_parsed_insights")) or {}
+    raw_scraped = _normalize_insights(row_dict.get("raw_scraped_data")) or {}
 
-    detail_sections = _build_detail_sections(insights, raw_scraped)
+    detail_sections = _build_detail_sections(
+        insights,
+        raw_scraped,
+        include_full_sections=current_user is not None,
+    )
 
     return PropertyDetail(
-        id=row["id"],
-        address=row["address_string"],
-        state=row["state"],
-        slug=row["slug"],
-        report_status=row["report_status"],
-        latitude=row["latitude"],
-        longitude=row["longitude"],
+        id=row_dict["id"],
+        address=row_dict["address_string"],
+        state=row_dict["state"],
+        slug=row_dict.get("slug"),
+        report_status=row_dict.get("report_status"),
+        latitude=row_dict.get("latitude"),
+        longitude=row_dict.get("longitude"),
         education=detail_sections["education"],
         connectivity=detail_sections["connectivity"],
         risk_factors=detail_sections["risk_factors"],
         zoning_and_planning=detail_sections["zoning_and_planning"],
         demographic_snapshot=detail_sections["demographic_snapshot"],
+        narrative=detail_sections["narrative"],
+        demographic_trend_analysis=detail_sections["demographic_trend_analysis"],
+        roi_scenarios=detail_sections["roi_scenarios"],
+        infrastructure=detail_sections["infrastructure"],
     )
 
 
@@ -189,12 +202,13 @@ async def property_detail_by_slug(
     request: Request,
     slug: str,
     db: asyncpg.Connection = Depends(get_db),
+    current_user: UserRow | None = Depends(get_optional_user),
 ) -> PropertyDetail:
     """Resolve property by slug and return detail payload."""
     row = await db.fetchrow("SELECT id FROM properties WHERE slug = $1", slug)
     if not row:
         raise HTTPException(status_code=404, detail="Property not found.")
-    return await _get_property_detail(row["id"], db)
+    return await _get_property_detail(row["id"], db, current_user=current_user)
 
 
 @router.get("/{property_id}/detail")
@@ -203,13 +217,14 @@ async def property_detail(
     request: Request,
     property_id: UUID,
     db: asyncpg.Connection = Depends(get_db),
+    current_user: UserRow | None = Depends(get_optional_user),
 ) -> PropertyDetail:
     """Curated property detail payload.
 
     Extraction order is LLM-first and falls back to raw scraped data when
     the LLM section is missing. Only returns relevant section data.
     """
-    return await _get_property_detail(property_id, db)
+    return await _get_property_detail(property_id, db, current_user=current_user)
 
 
 @router.post("/{property_id}/full/pdf")
@@ -350,7 +365,7 @@ async def request_property_scrape(
         """,
         property_id,
     )
-    
+
     # If report exists and is in a terminal state (READY or failed), allow re-scrape
     # If report is in progress, return current status
     if existing_report:
@@ -369,7 +384,7 @@ async def request_property_scrape(
                 "report_id": str(existing_report["id"]),
                 "message": "Property data is ready. Refresh to view details.",
             }
-    
+
     # Fetch property details to pass to scraper
     row = await db.fetchrow(
         """
@@ -386,7 +401,7 @@ async def request_property_scrape(
         """,
         property_id,
     )
-    
+
     if not row:
         raise HTTPException(status_code=404, detail="Property not found.")
 
@@ -400,13 +415,14 @@ async def request_property_scrape(
               AND ST_Contains(geom, (SELECT geom FROM properties WHERE id = $1))
             LIMIT 1
             """,
-            property_id
+            property_id,
         )
         if resolved_lga:
             lga_id = resolved_lga["id"]
             await db.execute(
                 "UPDATE properties SET lga_id = $1, updated_at = NOW() WHERE id = $2",
-                lga_id, property_id
+                lga_id,
+                property_id,
             )
 
     lga_name = None
@@ -439,9 +455,11 @@ async def request_property_scrape(
             updated_at = NOW()
         RETURNING id
         """,
-        property_id, user_id, anon_id
+        property_id,
+        user_id,
+        anon_id,
     )
-    
+
     # Dispatch Celery task
     task_result = celery_app.send_task(
         "scraper_worker.tasks.scrape_property",
@@ -457,7 +475,7 @@ async def request_property_scrape(
         },
         queue="data_acquisition_queue",
     )
-    
+
     return {
         "status": "queued",
         "task_id": task_result.id,
@@ -490,7 +508,7 @@ def _normalize_insights(insights: object) -> dict | None:
 
 def _transform_raw_data_for_pdf(raw_data: dict, address: str) -> dict:
     """Transform raw scraped data into minimal structure for lite PDF generation.
-    
+
     The full PDF generator expects LLM-structured insights. For lite reports with
     only raw data, we create a minimal structure with the data we have.
     """
@@ -498,7 +516,7 @@ def _transform_raw_data_for_pdf(raw_data: dict, address: str) -> dict:
         "address": address,
         "summary": "This lite preview includes raw data from public sources. Sign in for the full AI-analyzed report.",
     }
-    
+
     # Demographics
     if "demographics" in raw_data and isinstance(raw_data["demographics"], dict):
         demo = raw_data["demographics"]
@@ -512,7 +530,7 @@ def _transform_raw_data_for_pdf(raw_data: dict, address: str) -> dict:
         # Include time series for charts
         if "time_series" in demo:
             result["_raw_demographics_time_series"] = demo["time_series"]
-    
+
     # NBN
     if "nbn" in raw_data:
         nbn = raw_data["nbn"]
@@ -520,7 +538,7 @@ def _transform_raw_data_for_pdf(raw_data: dict, address: str) -> dict:
             "nbn_technology": nbn.get("tech_type"),
             "nbn_status": nbn.get("service_status"),
         }
-    
+
     # Risk factors
     result["risk_factors"] = {}
     if "zoning_code" in raw_data:
@@ -529,11 +547,16 @@ def _transform_raw_data_for_pdf(raw_data: dict, address: str) -> dict:
         result["risk_factors"]["flood"] = raw_data["flood_risk"]
     if "bushfire_risk" in raw_data:
         result["risk_factors"]["bushfire"] = raw_data["bushfire_risk"]
-    
+
     return result
 
 
-def _build_detail_sections(insights: dict, raw_scraped: dict) -> dict[str, dict | None]:
+def _build_detail_sections(
+    insights: dict,
+    raw_scraped: dict,
+    *,
+    include_full_sections: bool = False,
+) -> dict[str, dict | list | None]:
     """Build curated detail sections (LLM-first with raw fallback)."""
     education = _extract_detail_education(insights, raw_scraped)
     connectivity = _extract_detail_connectivity(insights, raw_scraped)
@@ -541,13 +564,28 @@ def _build_detail_sections(insights: dict, raw_scraped: dict) -> dict[str, dict 
     zoning_and_planning = _extract_detail_zoning(insights, raw_scraped)
     demographic_snapshot = _extract_detail_demographics(insights, raw_scraped)
 
-    return {
+    result: dict[str, dict | list | None] = {
         "education": education,
         "connectivity": connectivity,
         "risk_factors": risk_factors,
         "zoning_and_planning": zoning_and_planning,
         "demographic_snapshot": demographic_snapshot,
+        "narrative": None,
+        "demographic_trend_analysis": None,
+        "roi_scenarios": None,
+        "infrastructure": None,
     }
+    if include_full_sections:
+        narrative = insights.get("narrative")
+        trend = insights.get("demographic_trend_analysis")
+        roi = insights.get("roi_scenarios")
+        infra = insights.get("infrastructure")
+        result["narrative"] = narrative if isinstance(narrative, dict) else None
+        result["demographic_trend_analysis"] = trend if isinstance(trend, dict) else None
+        result["roi_scenarios"] = roi if isinstance(roi, dict) else None
+        result["infrastructure"] = infra if isinstance(infra, list) else None
+
+    return result
 
 
 def _extract_detail_education(insights: dict, raw_scraped: dict) -> dict | None:
@@ -576,12 +614,8 @@ def _extract_detail_education(insights: dict, raw_scraped: dict) -> dict | None:
             "enrolments": item.get("enrolments"),
         }
 
-    primary = [
-        _map_school(s) for s in by_type.get("Primary", []) if isinstance(s, dict)
-    ][:5]
-    secondary = [
-        _map_school(s) for s in by_type.get("Secondary", []) if isinstance(s, dict)
-    ][:5]
+    primary = [_map_school(s) for s in by_type.get("Primary", []) if isinstance(s, dict)][:5]
+    secondary = [_map_school(s) for s in by_type.get("Secondary", []) if isinstance(s, dict)][:5]
 
     if not primary and not secondary:
         return None
@@ -600,7 +634,9 @@ def _extract_detail_connectivity(insights: dict, raw_scraped: dict) -> dict | No
             "nbn_tech_type": llm_connectivity.get("nbn_tech_type"),
             "nbn_service_status": llm_connectivity.get("nbn_service_status"),
             "nbn_tech_change_status": llm_connectivity.get("nbn_tech_change_status"),
-            "nbn_target_eligibility_quarter": llm_connectivity.get("nbn_target_eligibility_quarter"),
+            "nbn_target_eligibility_quarter": llm_connectivity.get(
+                "nbn_target_eligibility_quarter"
+            ),
         }
 
     nbn = raw_scraped.get("nbn")
@@ -708,7 +744,9 @@ def _build_teaser(insights: dict | None) -> str | None:
     zoning = insights.get("zoning_and_planning", {})
     overlays = zoning.get("overlays", []) if isinstance(zoning, dict) else []
     if isinstance(overlays, list) and len(overlays) > 0:
-        teaser_parts.append(f"{len(overlays)} planning overlay(s) identified — Unlock to view details")
+        teaser_parts.append(
+            f"{len(overlays)} planning overlay(s) identified — Unlock to view details"
+        )
 
     # Check for flood risk
     risk_factors = insights.get("risk_factors", {})

@@ -10,6 +10,10 @@ import type {
   PropertyDetail as PropertyDetailData,
   RequestScrapeResponse,
 } from "@/types";
+import NarrativeSection from "@/components/property/NarrativeSection";
+import TrendAnalysisSection from "@/components/property/TrendAnalysisSection";
+import InfrastructureList from "@/components/property/InfrastructureList";
+import RoiScenariosSection from "@/components/property/RoiScenariosSection";
 
 type PropertyDetailProps = {
   propertyId: string | null;
@@ -71,7 +75,7 @@ function DuplicateWarningModal({
           <span className="mt-0.5 text-2xl" aria-hidden="true">⚠️</span>
           <div>
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
-              You've downloaded this before
+              You&apos;ve downloaded this before
             </h2>
             {prevDate && (
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -98,9 +102,9 @@ function DuplicateWarningModal({
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
-            Download anyway (1 credit)
+            Download again
           </button>
         </div>
       </div>
@@ -111,19 +115,34 @@ function DuplicateWarningModal({
 // ── Credit balance badge ──────────────────────────────────────────────────────
 
 function CreditBadge({ wallet }: { wallet: WalletSummary }) {
+  const isZero = wallet.total_spendable === 0;
+
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-800">
-      <span className="text-zinc-500 dark:text-zinc-400">Credits:</span>
-      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-        {wallet.daily_remaining} daily
-      </span>
-      {wallet.purchased_balance > 0 && (
-        <>
-          <span className="text-zinc-300 dark:text-zinc-600">+</span>
-          <span className="font-semibold text-blue-600 dark:text-blue-400">
-            {wallet.purchased_balance} purchased
-          </span>
-        </>
+    <div
+      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${
+        isZero
+          ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300"
+          : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span
+          className={`h-2 w-2 rounded-full ${isZero ? "bg-amber-500" : "bg-emerald-500"}`}
+          aria-hidden="true"
+        />
+        <span>Credits available:</span>
+        <strong className="font-semibold">{wallet.total_spendable}</strong>
+        <span className="text-zinc-400 dark:text-zinc-500">
+          ({wallet.daily_remaining} daily + {wallet.purchased_balance} purchased)
+        </span>
+      </div>
+      {isZero && (
+        <a
+          href="/pricing"
+          className="font-medium text-amber-700 underline hover:text-amber-800 dark:text-amber-400"
+        >
+          Top up
+        </a>
       )}
     </div>
   );
@@ -184,7 +203,11 @@ export default function PropertyDetail({
         data.connectivity ||
         data.risk_factors ||
         data.zoning_and_planning ||
-        data.demographic_snapshot,
+        data.demographic_snapshot ||
+        data.narrative ||
+        data.demographic_trend_analysis ||
+        data.roi_scenarios ||
+        (data.infrastructure && data.infrastructure.length > 0)
     );
   }, [data]);
 
@@ -548,7 +571,7 @@ export default function PropertyDetail({
                           </div>
                         ) : (
                           <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                            We'll email you{user?.primaryEmailAddress?.emailAddress ? ` at ${user.primaryEmailAddress.emailAddress}` : ""} when your report is ready.
+                            We&apos;ll email you{user?.primaryEmailAddress?.emailAddress ? ` at ${user.primaryEmailAddress.emailAddress}` : ""} when your report is ready.
                           </p>
                         )}
                       </div>
@@ -702,6 +725,22 @@ export default function PropertyDetail({
                     </div>
                   </dl>
                 </section>
+              )}
+
+              {data?.narrative && (
+                <NarrativeSection narrative={data.narrative} />
+              )}
+
+              {data?.demographic_trend_analysis && (
+                <TrendAnalysisSection analysis={data.demographic_trend_analysis} />
+              )}
+
+              {data?.infrastructure && data.infrastructure.length > 0 && (
+                <InfrastructureList infrastructure={data.infrastructure} />
+              )}
+
+              {data?.roi_scenarios && (
+                <RoiScenariosSection roiScenarios={data.roi_scenarios} />
               )}
 
             </div>

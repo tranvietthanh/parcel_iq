@@ -74,9 +74,9 @@ credit-gated, API fields).
 | 1 | [Phase 1: LLM Provider Interface & Config Foundation](./phase-01-start.md) | Completed | — |
 | 2 | [Phase 2: Anthropic & Google AI Provider Adapters](./phase-02-llm-provider-abstraction.md) | Completed | 1 |
 | 3 | [Phase 3: Wire Rate Limiter & Daily Quota Into the Call Path](./phase-03-llm-rate-limit-wiring.md) | Completed | 1 |
-| 4 | [Phase 4: Fix ABS `_add_growth_rates()` No-Op Bug](./phase-04-abs-growth-rate-bugfix.md) | Pending | — |
+| 4 | [Phase 4: Fix ABS `_add_growth_rates()` No-Op Bug](./phase-04-abs-growth-rate-bugfix.md) | Completed | — |
 | 5 | [Phase 5: PDF Report Data Enrichment](./phase-05-pdf-report-data-enrichment.md) | Pending | — |
-| 6 | [Phase 6: Web UI Report Parity](./phase-06-web-ui-report-parity.md) | Pending | — |
+| 6 | [Phase 6: Web UI Report Parity](./phase-06-web-ui-report-parity.md) | Completed | — |
 | 7 | [Phase 7: Sync Docs to Implementation](./phase-07-docs-sync.md) | Pending | 2, 3, 4, 5, 6 |
 
 Phases 1-3 (LLM worker) and 4 (ABS bugfix) and 5-6 (report data) touch disjoint

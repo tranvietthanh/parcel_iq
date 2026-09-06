@@ -32,6 +32,63 @@ export type BBoxSearchResponse = {
 
 /* ── Property ────────────────────────────────────────────── */
 
+export type InfrastructureItem = {
+  type: "TRANSPORT" | "HEALTH" | "EDUCATION" | "COMMERCIAL" | "OTHER" | string;
+  description: string;
+  distance_km?: number | null;
+  expected_completion_year?: number | null;
+  source_url?: string | null;
+};
+
+export type NarrativeInsights = {
+  executive_summary?: string | null;
+  zoning_summary?: string | null;
+  demographic_story?: string | null;
+  market_momentum?: string | null;
+  rental_case?: string | null;
+  risk_summary?: string | null;
+  investor_context?: string | null;
+};
+
+export type DemographicTrendAnalysis = {
+  population_momentum?: "ACCELERATING" | "STABLE" | "DECELERATING" | string | null;
+  population_momentum_note?: string | null;
+  migration_trend?: "STRENGTHENING" | "STABLE" | "WEAKENING" | string | null;
+  migration_trend_note?: string | null;
+  housing_supply_pressure?: "UNDERSUPPLY" | "BALANCED" | "OVERSUPPLY" | string | null;
+  housing_supply_pressure_note?: string | null;
+  price_growth_trend?: "ACCELERATING" | "STABLE" | "DECELERATING" | "NEGATIVE" | string | null;
+  price_growth_trend_note?: string | null;
+  business_health_trend?: "IMPROVING" | "STABLE" | "DETERIORATING" | string | null;
+  business_health_trend_note?: string | null;
+  rental_demand_outlook?: "STRONG" | "MODERATE" | "WEAK" | string | null;
+  rental_demand_outlook_note?: string | null;
+  overall_investment_signal?: "POSITIVE" | "NEUTRAL" | "CAUTIONARY" | string | null;
+  overall_investment_signal_note?: string | null;
+};
+
+export type ScenarioAssumptions = {
+  interest_rate_percent?: number | null;
+  weekly_rent_aud?: number | null;
+  vacancy_rate_percent?: number | null;
+  maintenance_percent?: number | null;
+  council_rates_annual_aud?: number | null;
+  insurance_annual_aud?: number | null;
+};
+
+export type RoiScenario = {
+  label: "Conservative" | "Base" | "Optimistic" | string;
+  assumptions: ScenarioAssumptions;
+  gross_yield_percent: number;
+  net_yield_percent: number;
+  annual_cash_flow_aud: number;
+};
+
+export type RoiScenarios = {
+  disclaimer: string;
+  scenarios: RoiScenario[];
+};
+
 export type PropertyDetail = {
   id: string;
   address: string;
@@ -45,6 +102,10 @@ export type PropertyDetail = {
   risk_factors: Record<string, unknown> | null;
   zoning_and_planning: Record<string, unknown> | null;
   demographic_snapshot: Record<string, unknown> | null;
+  narrative?: NarrativeInsights | null;
+  demographic_trend_analysis?: DemographicTrendAnalysis | null;
+  roi_scenarios?: RoiScenarios | null;
+  infrastructure?: InfrastructureItem[] | null;
 };
 
 export type PropertyPin = {

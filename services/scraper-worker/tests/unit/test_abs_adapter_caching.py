@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
-
-from app.adapters.national.abs_census import AbsCensusAdapter
+from app.adapters.national.abs_census import (
+    AbsCensusAdapter,
+    _add_growth_rates,
+    _has_usable_cached_demographics,
+)
 
 
 class TestAbsCensusAdapterWithCaching:
@@ -289,3 +291,133 @@ class TestAbsCensusDataCacheIntegration:
         # Assert: source shows it was newly cached
         assert "newly cached" in result["demographics"]["source"].lower()
         assert "ABS DataAPI" in result["data_sources"][0]["name"]
+
+
+class TestAbsGrowthRatesAndCacheUsability:
+    """Tests for _add_growth_rates and _has_usable_cached_demographics."""
+
+    def test_add_growth_rates_consecutive_years(self) -> None:
+        """Growth rates are computed for consecutive years and absent for the initial year."""
+        time_series = {
+            "2021": {
+                "total_population": 100000,
+                "established_house_median_price_aud": 500000,
+                "total_businesses": 1000,
+                "total_dwelling_approvals": 200,
+            },
+            "2022": {
+                "total_population": 110000,
+                "established_house_median_price_aud": 550000,
+                "total_businesses": 1100,
+                "total_dwelling_approvals": 250,
+            },
+        }
+        sorted_years = ["2021", "2022"]
+
+        _add_growth_rates(time_series, sorted_years)
+
+        # 2021 should have no growth metrics (no previous year)
+        assert "population_growth_pct_yoy" not in time_series["2021"]
+        assert "house_price_growth_pct_yoy" not in time_series["2021"]
+        assert "business_count_growth_pct_yoy" not in time_series["2021"]
+        assert "dwelling_approvals_growth_pct_yoy" not in time_series["2021"]
+
+        # 2022 should have correctly calculated YoY metrics
+        # (110000 - 100000) / 100000 * 100 = 10.0%
+        assert time_series["2022"]["population_growth_pct_yoy"] == 10.0
+        # (550000 - 500000) / 500000 * 100 = 10.0%
+        assert time_series["2022"]["house_price_growth_pct_yoy"] == 10.0
+        # (1100 - 1000) / 1000 * 100 = 10.0%
+        assert time_series["2022"]["business_count_growth_pct_yoy"] == 10.0
+        # (250 - 200) / 200 * 100 = 25.0%
+        assert time_series["2022"]["dwelling_approvals_growth_pct_yoy"] == 25.0
+
+    def test_add_growth_rates_coverage_gap(self) -> None:
+        """Non-consecutive years (e.g. 2016 -> 2021) skip growth calculation."""
+        time_series = {
+            "2016": {
+                "total_population": 100000,
+            },
+            "2021": {
+                "total_population": 120000,
+            },
+            "2022": {
+                "total_population": 126000,
+            },
+        }
+        sorted_years = ["2016", "2021", "2022"]
+
+        _add_growth_rates(time_series, sorted_years)
+
+        # 2016: initial year, no growth
+        assert "population_growth_pct_yoy" not in time_series["2016"]
+        # 2021: 5-year gap (2016 to 2021), must NOT be labeled YoY
+        assert "population_growth_pct_yoy" not in time_series["2021"]
+        # 2022: consecutive with 2021, computes YoY: (126000 - 120000) / 120000 * 100 = 5.0%
+        assert time_series["2022"]["population_growth_pct_yoy"] == 5.0
+
+    def test_add_growth_rates_zero_and_none_safe(self) -> None:
+        """Does not raise ZeroDivisionError if previous year is 0 or value is missing."""
+        time_series = {
+            "2021": {
+                "total_population": 0,
+                "total_businesses": None,
+            },
+            "2022": {
+                "total_population": 500,
+                "total_businesses": 100,
+            },
+        }
+        _add_growth_rates(time_series, ["2021", "2022"])
+        assert "population_growth_pct_yoy" not in time_series["2022"]
+        assert "business_count_growth_pct_yoy" not in time_series["2022"]
+
+    def test_has_usable_cached_demographics_valid_with_growth(self) -> None:
+        """Cached blob with consecutive years and populated growth keys is usable."""
+        enriched = {
+            "latest": {"total_population": 110000},
+            "time_series": {
+                "2021": {"total_population": 100000},
+                "2022": {"total_population": 110000, "population_growth_pct_yoy": 10.0},
+            },
+        }
+        assert _has_usable_cached_demographics(enriched) is True
+
+    def test_has_usable_cached_demographics_stale_without_growth(self) -> None:
+        """Cached blob with consecutive years but 0 growth keys is treated as stale."""
+        enriched = {
+            "latest": {"total_population": 110000},
+            "time_series": {
+                "2021": {"total_population": 100000},
+                "2022": {"total_population": 110000},
+            },
+        }
+        assert _has_usable_cached_demographics(enriched) is False
+
+    def test_has_usable_cached_demographics_single_year(self) -> None:
+        """Single-year cached blob with no growth rates expected remains usable."""
+        enriched = {
+            "latest": {"total_population": 100000},
+            "time_series": {
+                "2021": {"total_population": 100000},
+            },
+        }
+        assert _has_usable_cached_demographics(enriched) is True
+
+    def test_has_usable_cached_demographics_non_consecutive_years_without_growth(self) -> None:
+        """Non-consecutive years where growth cannot be computed remains usable."""
+        enriched = {
+            "latest": {"total_population": 120000},
+            "time_series": {
+                "2016": {"total_population": 100000},
+                "2021": {"total_population": 120000},
+            },
+        }
+        assert _has_usable_cached_demographics(enriched) is True
+
+    def test_has_usable_cached_demographics_malformed(self) -> None:
+        """Empty or missing structures return False."""
+        assert _has_usable_cached_demographics({}) is False
+        assert _has_usable_cached_demographics({"latest": {}}) is False
+        assert _has_usable_cached_demographics({"time_series": {}}) is False
+        assert _has_usable_cached_demographics(None) is False
