@@ -68,9 +68,8 @@ class TestParseWithLlmTask:
         self, mock_gemini: MagicMock, mock_db_conn: MagicMock
     ) -> None:
         """Low confidence output still publishes as READY."""
-        from tests.conftest import low_confidence_llm_json
-
         from app.tasks import parse_with_llm
+        from tests.conftest import low_confidence_llm_json
 
         mock_db = MagicMock()
         mock_db_conn.return_value = mock_db
@@ -171,8 +170,7 @@ class TestParseWithLlmTask:
     def test_stores_model_version(
         self, mock_gemini: MagicMock, mock_db_conn: MagicMock
     ) -> None:
-        """The llm_model_version column should be set from config."""
-        from app.config import settings
+        """The llm_model_version column should be set from active provider."""
         from app.tasks import parse_with_llm
 
         mock_db = MagicMock()
@@ -182,6 +180,7 @@ class TestParseWithLlmTask:
         mock_db.cursor.return_value.__exit__ = MagicMock(return_value=False)
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
         mock_gemini.generate_json.return_value = valid_llm_json()
+        mock_gemini.model_name = "test-provider-model-v1"
 
         parse_with_llm.run(
             property_id="prop-123",
@@ -191,7 +190,7 @@ class TestParseWithLlmTask:
 
         # Check model version is in the final UPDATE params
         last_update_params = _report_update_params(mock_cursor)
-        assert settings.OPENAI_MODEL in last_update_params
+        assert mock_gemini.model_name in last_update_params
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")

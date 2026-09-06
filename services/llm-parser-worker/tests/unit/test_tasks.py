@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def _make_task_mocks(user_row=None):
@@ -23,7 +23,10 @@ def _task_patches(mock_db, mock_parsed_llm):
         patch("app.tasks.build_user_prompt", return_value="prompt"),
         patch("app.tasks.llm_client.generate_json", return_value='{"parsed": "ok"}'),
         patch("app.tasks.LlmOutput.model_validate_json", return_value=mock_parsed_llm),
-        patch("app.tasks.compute_confidence", return_value=ConfidenceResult(scores={"overall_avg": 0.9}, overall="HIGH")),
+        patch(
+            "app.tasks.compute_confidence",
+            return_value=ConfidenceResult(scores={"overall_avg": 0.9}, overall="HIGH"),
+        ),
     ]
 
 
@@ -31,7 +34,9 @@ def test_parse_with_llm_sends_email():
     """Email is sent when a user email is found after READY transition."""
     from app.tasks import parse_with_llm
 
-    mock_db, _, mock_parsed_llm = _make_task_mocks(user_row={"email": "test@example.com"})
+    mock_db, _, mock_parsed_llm = _make_task_mocks(
+        user_row={"email": "test@example.com", "slug": "123-fake-st"}
+    )
 
     patches = _task_patches(mock_db, mock_parsed_llm)
     patches.append(patch("app.services.email.send_report_ready_email"))
@@ -42,7 +47,7 @@ def test_parse_with_llm_sends_email():
     mock_send_email.assert_called_once_with(
         to_email="test@example.com",
         address="123 Fake St",
-        property_id="prop_1",
+        slug="123-fake-st",
     )
 
 
@@ -65,10 +70,17 @@ def test_parse_with_llm_email_failure_is_non_fatal():
     """A Resend API failure during email send does not raise from parse_with_llm."""
     from app.tasks import parse_with_llm
 
-    mock_db, _, mock_parsed_llm = _make_task_mocks(user_row={"email": "test@example.com"})
+    mock_db, _, mock_parsed_llm = _make_task_mocks(
+        user_row={"email": "test@example.com", "slug": "123-fake-st"}
+    )
 
     patches = _task_patches(mock_db, mock_parsed_llm)
-    patches.append(patch("app.services.email.send_report_ready_email", side_effect=Exception("Resend down")))
+    patches.append(
+        patch(
+            "app.services.email.send_report_ready_email",
+            side_effect=Exception("Resend down"),
+        )
+    )
 
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
         # Should not raise

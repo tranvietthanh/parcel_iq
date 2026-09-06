@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 redis_client = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
 
-# Rate limit settings (OpenAI)
-# The worker uses OpenAI via `OPENAI_*` settings. Keep keys namespaced
-# under `openai:` in Redis to avoid collisions with other services.
-MAX_RPM = settings.OPENAI_MAX_RPM
-DAILY_QUOTA = settings.OPENAI_DAILY_QUOTA
+# Rate limit settings (LLM)
+# The worker uses provider-agnostic `LLM_*` settings. Keep keys namespaced
+# under `openai:` in Redis to avoid collisions with other services until Phase 3.
+MAX_RPM = settings.LLM_MAX_RPM
+DAILY_QUOTA = settings.LLM_DAILY_QUOTA
 TOKEN_KEY = "openai:rate_limit:tokens"
 LAST_REFILL_KEY = "openai:rate_limit:last_refill"
 DAILY_COUNT_KEY_PREFIX = "openai:daily_count:"

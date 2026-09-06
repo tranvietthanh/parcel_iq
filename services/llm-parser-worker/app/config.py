@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import model_validator
+from typing import Literal
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -15,14 +17,24 @@ class Settings(BaseSettings):
     # ── Redis ────────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # ── LLM Provider Configuration ───────────────────────────────────────
+    LLM_PROVIDER: Literal["openai", "anthropic", "google"] = "openai"
+    LLM_MAX_RPM: int = Field(default=60, ge=1)
+    LLM_DAILY_QUOTA: int = Field(default=100000, ge=1)
+
     # ── OpenAI (standard) ───────────────────────────────────────────────
     # Use the official OpenAI REST API with a single set of env vars.
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-3.5-turbo"
-    OPENAI_DAILY_QUOTA: int = 100000
-    OPENAI_MAX_RPM: int = 60
-    # Provider-specific settings removed — worker uses OpenAI (`OPENAI_*`).
+
+    # ── Anthropic (Phase 2 placeholders) ─────────────────────────────────
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = ""
+
+    # ── Google AI (Phase 2 placeholders) ─────────────────────────────────
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_MODEL: str = ""
 
     RESEND_API_KEY: str = ""
     PUBLIC_WEB_URL: str = "https://ozpropertyreport.com"
@@ -40,8 +52,12 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if "devpassword" in self.DATABASE_URL:
             problems.append("DATABASE_URL still uses the dev password")
-        if not self.OPENAI_API_KEY:
+        if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
             problems.append("OPENAI_API_KEY is not set")
+        elif self.LLM_PROVIDER == "anthropic" and not self.ANTHROPIC_API_KEY:
+            problems.append("ANTHROPIC_API_KEY is not set")
+        elif self.LLM_PROVIDER == "google" and not self.GOOGLE_API_KEY:
+            problems.append("GOOGLE_API_KEY is not set")
         if problems:
             raise ValueError(
                 "Insecure production configuration: " + "; ".join(problems)

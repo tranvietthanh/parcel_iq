@@ -16,7 +16,6 @@ import re
 import time
 
 from app.celery_app import celery_app
-from app.config import settings
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.prompts.user_prompt import build_user_prompt
 from app.schemas.confidence import compute_confidence
@@ -31,8 +30,8 @@ MAX_DLQ_RETRIES = 5
 
 
 def _active_model_name() -> str:
-    """Return the configured OpenAI model name."""
-    return settings.OPENAI_MODEL
+    """Return the active LLM model name."""
+    return llm_client.model_name
 
 
 def _extract_json_payload(raw_response: str) -> str:
@@ -182,7 +181,7 @@ def parse_with_llm(
                     (property_report_id,)
                 )
                 user_row = cur.fetchone()
-            
+
             if user_row and user_row.get("email"):
                 from app.services.email import send_report_ready_email
                 send_report_ready_email(

@@ -117,7 +117,7 @@ class TestGetDailyUsage:
         mock_redis.get.return_value = "42"
         count, limit = rl_mod.get_daily_usage()
         assert count == 42
-        assert limit == rl_mod.settings.OPENAI_DAILY_QUOTA
+        assert limit == rl_mod.settings.LLM_DAILY_QUOTA
 
     @patch.object(rl_mod, "redis_client")
     def test_returns_zero_when_no_key(self, mock_redis: MagicMock) -> None:

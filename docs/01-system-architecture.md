@@ -396,8 +396,8 @@ DATABASE_URL=postgresql+psycopg2://parceliq:pass@postgres:5432/parceliq
 REDIS_URL=redis://redis:6379/0
 OPENAI_API_KEY=<OpenAI API key>   # sk_...
 OPENAI_MODEL=gpt-3.5-turbo        # or gpt-4o-mini, gpt-4o
-OPENAI_DAILY_QUOTA=100000
-OPENAI_MAX_RPM=60
+LLM_DAILY_QUOTA=100000
+LLM_MAX_RPM=60
 RESEND_API_KEY=<Resend API key>
 PUBLIC_WEB_URL=https://ozpropertyreport.com
 

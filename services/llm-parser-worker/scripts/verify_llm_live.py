@@ -9,13 +9,12 @@ from __future__ import annotations
 
 import json
 import os
-import sys
+
+from parceliq_types.llm_output import LlmOutput
 
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.prompts.user_prompt import build_user_prompt
 from app.services.llm_client import llm_client
-from parceliq_types.llm_output import LlmOutput
-
 
 SAMPLE_ADDRESS = "12 Example Street, Hawthorn VIC 3122"
 SAMPLE_RAW_DATA = {
@@ -66,10 +65,19 @@ SAMPLE_RAW_DATA = {
 def main() -> int:
     from app.config import settings
 
-    # Worker now uses OpenAI; ensure API key is set
-    if not os.getenv("OPENAI_API_KEY") and not settings.OPENAI_API_KEY:
-        print("OPENAI_API_KEY is not set. Export it before running this script.")
-        return 2
+    provider = settings.LLM_PROVIDER
+    if provider == "openai":
+        if not os.getenv("OPENAI_API_KEY") and not settings.OPENAI_API_KEY:
+            print("OPENAI_API_KEY is not set. Export it before running this script.")
+            return 2
+    elif provider == "anthropic":
+        if not os.getenv("ANTHROPIC_API_KEY") and not settings.ANTHROPIC_API_KEY:
+            print("ANTHROPIC_API_KEY is not set. Export it before running this script.")
+            return 2
+    elif provider == "google":
+        if not os.getenv("GOOGLE_API_KEY") and not settings.GOOGLE_API_KEY:
+            print("GOOGLE_API_KEY is not set. Export it before running this script.")
+            return 2
 
     prompt = build_user_prompt(SAMPLE_ADDRESS, SAMPLE_RAW_DATA)
     raw_json = llm_client.generate_json(SYSTEM_PROMPT, prompt)
@@ -95,7 +103,7 @@ def main() -> int:
     LlmOutput.model_validate_json(raw_json)
 
     print(raw_json)
-    print(f"OpenAI ({settings.OPENAI_MODEL}) response validated successfully.")
+    print(f"LLM provider {provider} ({llm_client.model_name}) response validated successfully.")
     return 0
 
 

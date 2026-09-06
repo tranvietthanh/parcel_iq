@@ -435,8 +435,8 @@ def main():
         detail_len = len(ov.get("detail", ""))
         print(f"   {ov['code']}: severity={ov['severity']}, detail={detail_len} chars")
     
-    print(f"\n5. LLM Provider: OpenAI (Chat Completions)")
-    print(f"   Model: {settings.OPENAI_MODEL}")
+    print(f"\n5. LLM Provider: {settings.LLM_PROVIDER}")
+    print(f"   Model: {llm_client.model_name}")
     
     # Automatically run the test (no prompt)
     print("\n" + "=" * 80)

@@ -32,8 +32,8 @@ print(f"   Total: {total_len:,} chars ({total_len/1024:.1f} KB)")
 print(f"   Est. tokens: ~{total_len//4:,}")
 
 print(f"\n2. LLM Config:")
-print("   Provider: OpenAI (Chat Completions)")
-print(f"   Model: {settings.OPENAI_MODEL}")
+print(f"   Provider: {settings.LLM_PROVIDER}")
+print(f"   Model: {llm_client.model_name}")
 
 print(f"\n3. Sending to LLM API...")
 print(f"   (This may take up to 3 minutes for large models...)")
