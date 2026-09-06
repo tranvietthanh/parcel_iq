@@ -11,6 +11,7 @@ RUN uv sync --frozen --no-dev
 FROM base AS runner
 WORKDIR /workspace/services/public-api
 COPY --from=builder /workspace/services/public-api/.venv ./.venv
+COPY --from=builder /workspace/shared/pdf-renderer /workspace/shared/pdf-renderer
 COPY services/public-api/app ./app
 ENV PATH="/workspace/services/public-api/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1

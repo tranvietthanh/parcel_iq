@@ -17,7 +17,7 @@ dependencies = [
     "celery[redis]>=5.4,<6",
     "stripe>=11,<12",
     "reportlab>=4.2,<5",
-    "ozpr-pdf-renderer @ file:///home/thanhtran/Projects/parcel_iq/shared/pdf-renderer",
+    "ozpr-pdf-renderer",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +40,9 @@ pythonpath = ["."]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.uv.sources]
+ozpr-pdf-renderer = { path = "../../shared/pdf-renderer", editable = true }
 
 [tool.ruff]
 line-length = 100

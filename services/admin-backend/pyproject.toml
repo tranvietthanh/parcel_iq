@@ -15,7 +15,7 @@ dependencies = [
     "redis>=5,<6",
     "minio>=7.2,<8",
     "reportlab>=4.2,<5",
-    "ozpr-pdf-renderer @ file:///home/thanhtran/Projects/parcel_iq/shared/pdf-renderer",
+    "ozpr-pdf-renderer",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +35,9 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.uv.sources]
+ozpr-pdf-renderer = { path = "../../shared/pdf-renderer", editable = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

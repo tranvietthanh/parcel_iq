@@ -30,6 +30,7 @@ WORKDIR /workspace/services/admin-backend
 
 # Copy virtual environment from builder
 COPY --from=builder /workspace/services/admin-backend/.venv /workspace/services/admin-backend/.venv
+COPY --from=builder /workspace/shared/pdf-renderer /workspace/shared/pdf-renderer
 
 # Copy application code
 COPY services/admin-backend/app ./app
