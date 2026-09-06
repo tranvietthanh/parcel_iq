@@ -28,13 +28,15 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-3.5-turbo"
 
-    # ── Anthropic (Phase 2 placeholders) ─────────────────────────────────
+    # ── Anthropic ────────────────────────────────────────────────────────
+    ANTHROPIC_BASE_URL: str = "https://api.anthropic.com/v1"
     ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL: str = ""
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
 
-    # ── Google AI (Phase 2 placeholders) ─────────────────────────────────
+    # ── Google AI ────────────────────────────────────────────────────────
+    GOOGLE_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
     GOOGLE_API_KEY: str = ""
-    GOOGLE_MODEL: str = ""
+    GOOGLE_MODEL: str = "gemini-1.5-pro"
 
     RESEND_API_KEY: str = ""
     PUBLIC_WEB_URL: str = "https://ozpropertyreport.com"
@@ -52,12 +54,21 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if "devpassword" in self.DATABASE_URL:
             problems.append("DATABASE_URL still uses the dev password")
-        if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
-            problems.append("OPENAI_API_KEY is not set")
-        elif self.LLM_PROVIDER == "anthropic" and not self.ANTHROPIC_API_KEY:
-            problems.append("ANTHROPIC_API_KEY is not set")
-        elif self.LLM_PROVIDER == "google" and not self.GOOGLE_API_KEY:
-            problems.append("GOOGLE_API_KEY is not set")
+        if self.LLM_PROVIDER == "openai":
+            if not self.OPENAI_API_KEY:
+                problems.append("OPENAI_API_KEY is not set")
+            if not self.OPENAI_MODEL:
+                problems.append("OPENAI_MODEL is not set")
+        elif self.LLM_PROVIDER == "anthropic":
+            if not self.ANTHROPIC_API_KEY:
+                problems.append("ANTHROPIC_API_KEY is not set")
+            if not self.ANTHROPIC_MODEL:
+                problems.append("ANTHROPIC_MODEL is not set")
+        elif self.LLM_PROVIDER == "google":
+            if not self.GOOGLE_API_KEY:
+                problems.append("GOOGLE_API_KEY is not set")
+            if not self.GOOGLE_MODEL:
+                problems.append("GOOGLE_MODEL is not set")
         if problems:
             raise ValueError(
                 "Insecure production configuration: " + "; ".join(problems)

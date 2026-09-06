@@ -7,14 +7,16 @@ This is intentionally not part of pytest to avoid quota usage in CI.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 
 from parceliq_types.llm_output import LlmOutput
 
+from app.config import settings
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.prompts.user_prompt import build_user_prompt
-from app.services.llm_client import llm_client
+from app.services.providers import get_llm_client
 
 SAMPLE_ADDRESS = "12 Example Street, Hawthorn VIC 3122"
 SAMPLE_RAW_DATA = {
@@ -63,9 +65,16 @@ SAMPLE_RAW_DATA = {
 
 
 def main() -> int:
-    from app.config import settings
+    parser = argparse.ArgumentParser(description="Live sanity check for LLM provider")
+    parser.add_argument(
+        "--provider",
+        choices=["openai", "anthropic", "google"],
+        default=settings.LLM_PROVIDER,
+        help="LLM provider to test (default: configured LLM_PROVIDER)",
+    )
+    args = parser.parse_args()
+    provider = args.provider
 
-    provider = settings.LLM_PROVIDER
     if provider == "openai":
         if not os.getenv("OPENAI_API_KEY") and not settings.OPENAI_API_KEY:
             print("OPENAI_API_KEY is not set. Export it before running this script.")
@@ -79,8 +88,9 @@ def main() -> int:
             print("GOOGLE_API_KEY is not set. Export it before running this script.")
             return 2
 
+    client = get_llm_client(provider_name=provider)
     prompt = build_user_prompt(SAMPLE_ADDRESS, SAMPLE_RAW_DATA)
-    raw_json = llm_client.generate_json(SYSTEM_PROMPT, prompt)
+    raw_json = client.generate_json(SYSTEM_PROMPT, prompt)
 
     # Basic sanity checks
     parsed = json.loads(raw_json)
@@ -91,8 +101,9 @@ def main() -> int:
         "infrastructure",
         "roi_scenarios",
         "demographic_snapshot",
-        "review_required",
-        "review_reasons",
+        "demographic_trend_analysis",
+        "education",
+        "narrative",
     }
     missing = required_keys.difference(parsed.keys())
     if missing:
@@ -103,7 +114,7 @@ def main() -> int:
     LlmOutput.model_validate_json(raw_json)
 
     print(raw_json)
-    print(f"LLM provider {provider} ({llm_client.model_name}) response validated successfully.")
+    print(f"LLM provider {provider} ({client.model_name}) response validated successfully.")
     return 0
 
 

@@ -85,3 +85,46 @@ def test_parse_with_llm_email_failure_is_non_fatal():
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
         # Should not raise
         parse_with_llm("prop_1", "rep_1", "123 Fake St")
+
+
+def test_parse_with_llm_redacts_credentials_in_error_message():
+    """Any credential matching key=, api_key=, or Bearer must be redacted
+    in error_message and logs.
+    """
+    from app.tasks import parse_with_llm
+
+    mock_db, mock_cursor, mock_parsed_llm = _make_task_mocks()
+    raw_secret = "AIzaSyD-secret-key-12345678"
+    raw_ant_secret = "sk-ant-api03-abcdef1234567890"
+    raw_bearer_token = "sk-proj-openai-secret-token-12345678"
+
+    patches = _task_patches(mock_db, mock_parsed_llm)
+    # Force llm_client.generate_json to raise with embedded API key
+    patches[2] = patch(
+        "app.tasks.llm_client.generate_json",
+        side_effect=RuntimeError(
+            f"HTTP 500: API failed with key={raw_secret}, api_key={raw_ant_secret}, "
+            f"and Authorization: Bearer {raw_bearer_token}"
+        ),
+    )
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patch.object(parse_with_llm, "max_retries", 3), \
+             patch.object(parse_with_llm.request, "retries", 3):
+            parse_with_llm("prop_1", "rep_1", "123 Fake St")
+
+    # Find the UPDATE query executed on failure
+    execute_calls = mock_cursor.execute.call_args_list
+    failed_call = next(
+        (call for call in execute_calls if "status='FAILED'" in call[0][0]),
+        None,
+    )
+    assert failed_call is not None, "Expected an UPDATE setting status='FAILED'"
+    error_param = failed_call[0][1][0]
+
+    assert raw_secret not in error_param
+    assert raw_ant_secret not in error_param
+    assert raw_bearer_token not in error_param
+    assert "key=[REDACTED]" in error_param
+    assert "api_key=[REDACTED]" in error_param
+    assert "Bearer [REDACTED]" in error_param

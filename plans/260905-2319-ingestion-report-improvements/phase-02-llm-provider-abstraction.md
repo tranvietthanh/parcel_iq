@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Anthropic & Google AI Provider Adapters"
-status: pending
+status: completed
 priority: P1
 effort: "2d"
 dependencies: [1]
@@ -181,12 +181,12 @@ anymore, since neither puts the key in the URL.
 
 ## Success Criteria
 
-- [ ] `LLM_PROVIDER=anthropic` with a valid `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` produces a `parse_with_llm` run that validates against `LlmOutput` end-to-end against a real property, verified via `scripts/verify_llm_live.py --provider anthropic`.
-- [ ] `LLM_PROVIDER=google` with a valid `GOOGLE_API_KEY`/`GOOGLE_MODEL` does the same via `--provider google`.
-- [ ] Switching `LLM_PROVIDER` requires only an `.env` change — no code change, no redeploy of a different image.
-- [ ] Neither adapter's API key ever appears in a `requests.HTTPError` message (verified by a unit test that triggers a 4xx/5xx mock response and asserts the key string is absent from the raised exception's `str()`).
-- [ ] A 200 response with `stop_reason=max_tokens` (Anthropic) or `finishReason=MAX_TOKENS`/empty `candidates` (Google) raises a `PROVIDER_TRUNCATED`/`PROVIDER_NO_CONTENT`/`PROVIDER_NO_CANDIDATES` error, not a silently truncated/empty parse.
-- [ ] New unit tests pass; existing suite (`test_tasks.py`, `test_llm_output_validation.py`) still passes unmodified.
+- [x] `LLM_PROVIDER=anthropic` with a valid `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` produces a `parse_with_llm` run that validates against `LlmOutput` end-to-end against a real property, verified via `scripts/verify_llm_live.py --provider anthropic`.
+- [x] `LLM_PROVIDER=google` with a valid `GOOGLE_API_KEY`/`GOOGLE_MODEL` does the same via `--provider google`.
+- [x] Switching `LLM_PROVIDER` requires only an `.env` change — no code change, no redeploy of a different image.
+- [x] Neither adapter's API key ever appears in a `requests.HTTPError` message (verified by a unit test that triggers a 4xx/5xx mock response and asserts the key string is absent from the raised exception's `str()`).
+- [x] A 200 response with `stop_reason=max_tokens` (Anthropic) or `finishReason=MAX_TOKENS`/empty `candidates` (Google) raises a `PROVIDER_TRUNCATED`/`PROVIDER_NO_CONTENT`/`PROVIDER_NO_CANDIDATES` error, not a silently truncated/empty parse.
+- [x] New unit tests pass; existing suite (`test_tasks.py`, `test_llm_output_validation.py`) still passes unmodified.
 
 ## Risk Assessment
 

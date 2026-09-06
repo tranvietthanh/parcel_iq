@@ -14,10 +14,11 @@ from app.services.providers.openai_provider import OpenAIClient
 
 
 class TestLlmProviders:
-    def test_registry_contains_openai(self) -> None:
-        """OpenAIClient should be registered in LLM_PROVIDER_REGISTRY."""
-        assert "openai" in LLM_PROVIDER_REGISTRY
-        assert issubclass(LLM_PROVIDER_REGISTRY["openai"], LlmProvider)
+    def test_registry_contains_all_providers(self) -> None:
+        """OpenAIClient, AnthropicClient, and GoogleAIClient should be in LLM_PROVIDER_REGISTRY."""
+        for provider_name in ("openai", "anthropic", "google"):
+            assert provider_name in LLM_PROVIDER_REGISTRY
+            assert issubclass(LLM_PROVIDER_REGISTRY[provider_name], LlmProvider)
 
     def test_get_llm_client_default_openai(self) -> None:
         """Default provider should return an OpenAIClient with model_name set."""
@@ -28,17 +29,29 @@ class TestLlmProviders:
             assert isinstance(client, LlmProvider)
             assert client.model_name == "test-model-42"
 
-    def test_get_llm_client_anthropic_placeholder_raises(self) -> None:
-        """Setting LLM_PROVIDER=anthropic should raise NotImplementedError in Phase 1."""
-        with patch("app.services.providers.settings.LLM_PROVIDER", "anthropic"):
-            with pytest.raises(NotImplementedError, match="Phase 2"):
-                get_llm_client()
+    def test_get_llm_client_anthropic(self) -> None:
+        """Setting LLM_PROVIDER=anthropic should return AnthropicClient."""
+        from app.services.providers.anthropic_provider import AnthropicClient
 
-    def test_get_llm_client_google_placeholder_raises(self) -> None:
-        """Setting LLM_PROVIDER=google should raise NotImplementedError in Phase 1."""
-        with patch("app.services.providers.settings.LLM_PROVIDER", "google"):
-            with pytest.raises(NotImplementedError, match="Phase 2"):
-                get_llm_client()
+        with patch("app.services.providers.settings.LLM_PROVIDER", "anthropic"), \
+             patch("app.services.providers.settings.ANTHROPIC_API_KEY", "sk-ant-test"), \
+             patch("app.services.providers.settings.ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"):
+            client = get_llm_client()
+            assert isinstance(client, AnthropicClient)
+            assert isinstance(client, LlmProvider)
+            assert client.model_name == "claude-3-5-sonnet-20241022"
+
+    def test_get_llm_client_google(self) -> None:
+        """Setting LLM_PROVIDER=google should return GoogleAIClient."""
+        from app.services.providers.google_provider import GoogleAIClient
+
+        with patch("app.services.providers.settings.LLM_PROVIDER", "google"), \
+             patch("app.services.providers.settings.GOOGLE_API_KEY", "AIzaSyD-test"), \
+             patch("app.services.providers.settings.GOOGLE_MODEL", "gemini-1.5-pro"):
+            client = get_llm_client()
+            assert isinstance(client, GoogleAIClient)
+            assert isinstance(client, LlmProvider)
+            assert client.model_name == "gemini-1.5-pro"
 
     def test_get_llm_client_unknown_provider_raises(self) -> None:
         """Setting an unknown LLM_PROVIDER should raise ValueError."""
@@ -102,4 +115,24 @@ class TestProviderConfig:
                 DATABASE_URL="postgresql+psycopg2://user:secret@localhost:5432/db",
                 LLM_PROVIDER="google",
                 GOOGLE_API_KEY="",
+            )
+
+        # Production with anthropic requires ANTHROPIC_MODEL
+        with pytest.raises(ValueError, match="ANTHROPIC_MODEL is not set"):
+            Settings(
+                ENVIRONMENT="production",
+                DATABASE_URL="postgresql+psycopg2://user:secret@localhost:5432/db",
+                LLM_PROVIDER="anthropic",
+                ANTHROPIC_API_KEY="sk-ant-test",
+                ANTHROPIC_MODEL="",
+            )
+
+        # Production with google requires GOOGLE_MODEL
+        with pytest.raises(ValueError, match="GOOGLE_MODEL is not set"):
+            Settings(
+                ENVIRONMENT="production",
+                DATABASE_URL="postgresql+psycopg2://user:secret@localhost:5432/db",
+                LLM_PROVIDER="google",
+                GOOGLE_API_KEY="AIzaSy-test",
+                GOOGLE_MODEL="",
             )

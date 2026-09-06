@@ -196,15 +196,23 @@ def parse_with_llm(
     except Exception as exc:
         db.rollback()
         err_msg = str(exc)
+        # Redact potential API keys/credentials before logging or DB persistence
+        err_msg = re.sub(
+            r"(key=|api[-_]?key\"?[:=]\s*\"?|bearer\s+)[A-Za-z0-9_\-]{8,}",
+            r"\1[REDACTED]",
+            err_msg,
+            flags=re.IGNORECASE,
+        )
+        sanitized_exc = RuntimeError(err_msg)
 
         if "RATE_LIMIT" in err_msg or "429" in err_msg:
             logger.warning("[LLM] Rate limited on %s. Retrying in 65s.", address_string)
-            raise self.retry(exc=exc)
+            raise self.retry(exc=sanitized_exc)
 
         if "DAILY_QUOTA_EXCEEDED" in err_msg:
             logger.warning("[LLM] Daily quota reached. Retrying %s later.", address_string)
             # Retry with longer delay — next day
-            raise self.retry(exc=exc, countdown=3600)
+            raise self.retry(exc=sanitized_exc, countdown=3600)
 
         if self.request.retries >= self.max_retries:
             # Exhausted retries — mark as FAILED
@@ -218,7 +226,7 @@ def parse_with_llm(
                 db.commit()
             logger.error("[LLM] FAILED after max retries: %s — %s", address_string, err_msg)
         else:
-            raise self.retry(exc=exc)
+            raise self.retry(exc=sanitized_exc)
     finally:
         db.close()
 
