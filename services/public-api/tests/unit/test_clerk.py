@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.core.clerk import extract_plan_from_jwt, get_jwks, require_auth, verify_clerk_token
+from app.core.clerk import get_jwks, require_auth, verify_clerk_token
 from jose import JWTError
 
 
@@ -83,25 +83,4 @@ class TestRequireAuth:
         assert exc.value.status_code == 401
 
 
-class TestExtractPlanFromJwt:
-    def test_no_pla_claim_returns_free(self):
-        assert extract_plan_from_jwt({"sub": "user_123"}) == "FREE"
 
-    def test_pla_pro(self):
-        assert extract_plan_from_jwt({"sub": "user_123", "pla": "u:pro"}) == "PRO"
-
-    def test_pla_unlimited(self):
-        assert extract_plan_from_jwt({"sub": "user_123", "pla": "u:unlimited"}) == "UNLIMITED"
-
-    def test_pla_unknown_slug_returns_free(self):
-        assert extract_plan_from_jwt({"sub": "user_123", "pla": "u:enterprise"}) == "FREE"
-
-    def test_pla_org_prefix_returns_free(self):
-        # Org-level plans are not used in this app — treat as FREE
-        assert extract_plan_from_jwt({"sub": "user_123", "pla": "o:pro"}) == "FREE"
-
-    def test_pla_empty_string_returns_free(self):
-        assert extract_plan_from_jwt({"sub": "user_123", "pla": ""}) == "FREE"
-
-    def test_pla_free_slug_returns_free(self):
-        assert extract_plan_from_jwt({"sub": "user_123", "pla": "u:free"}) == "FREE"

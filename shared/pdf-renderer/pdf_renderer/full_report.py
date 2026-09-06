@@ -11,15 +11,27 @@ import os
 from datetime import datetime
 from io import BytesIO
 from typing import Any
+from xml.sax.saxutils import escape as _xml_escape
+
+
+def _esc(val: Any) -> str:
+    """Safely escape XML characters for ReportLab Paragraph markup.
+
+    Handles None, booleans, and numeric types gracefully without raising AttributeError.
+    """
+    if val is None:
+        return ""
+    return _xml_escape(str(val))
+
 
 import httpx
+from reportlab.graphics.shapes import Circle, Drawing, Line, PolyLine, Rect, String
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.graphics.shapes import Circle, Drawing, Line, PolyLine, Rect, String
 from reportlab.platypus import (
     BaseDocTemplate,
     HRFlowable,
@@ -228,7 +240,7 @@ def section_title(text: str, styles: dict[str, ParagraphStyle]) -> list:
 
 
 def two_col_table(rows: list[tuple[str, str]], styles: dict[str, ParagraphStyle]) -> Table:
-    data = [[Paragraph(k, styles["label"]), Paragraph(str(v), styles["value"])] for k, v in rows]
+    data = [[Paragraph(k, styles["label"]), Paragraph(_esc(str(v)), styles["value"])] for k, v in rows]
     t = Table(data, colWidths=[CONTENT_W * 0.42, CONTENT_W * 0.58])
     t.setStyle(
         TableStyle(
@@ -246,16 +258,18 @@ def two_col_table(rows: list[tuple[str, str]], styles: dict[str, ParagraphStyle]
 def overlay_table(overlays: list[dict[str, Any]], styles: dict[str, ParagraphStyle]) -> Table:
     rows: list[list[Any]] = []
     for ov in overlays:
+        if not isinstance(ov, dict):
+            continue
         code = ov.get("code") or ""
         family = ov.get("family") or "other"
         summary = ov.get("summary") or ""
         severity = ov.get("severity")
         rows.append(
             [
-                Paragraph(f"<b>{code}</b>", styles["body"]),
-                Paragraph(f"{family}", styles["body_small"]),
+                Paragraph(f"<b>{_esc(code)}</b>", styles["body"]),
+                Paragraph(f"{_esc(family)}", styles["body_small"]),
                 Paragraph(f"{severity if severity is not None else '—'}/10", styles["body_small"]),
-                Paragraph(summary, styles["body_small"]),
+                Paragraph(_esc(summary), styles["body_small"]),
             ]
         )
     t = Table(rows, colWidths=[20 * mm, 24 * mm, 16 * mm, CONTENT_W - 60 * mm])
@@ -273,7 +287,9 @@ def overlay_table(overlays: list[dict[str, Any]], styles: dict[str, ParagraphSty
 
 
 def build_cover(data: dict[str, Any], address: str, styles: dict[str, ParagraphStyle]) -> list:
-    trend = data.get("demographic_trend_analysis", {})
+    trend = data.get("demographic_trend_analysis") or {}
+    if not isinstance(trend, dict):
+        trend = {}
     signal = (trend.get("overall_investment_signal") or "PENDING").replace("_", " ")
     signal_bg, signal_fg, _ = signal_colours(trend.get("overall_investment_signal"))
 
@@ -282,8 +298,8 @@ def build_cover(data: dict[str, Any], address: str, styles: dict[str, ParagraphS
             [
                 Paragraph("PROPERTY INTELLIGENCE", styles["subsection_header"]),
             ],
-            [Paragraph(address or "Property Report", styles["cover_title"])],
-            [Paragraph(f"Overall investment signal: <b>{signal}</b>", styles["cover_sub"])],
+            [Paragraph(_esc(address or "Property Report"), styles["cover_title"])],
+            [Paragraph(f"Overall investment signal: <b>{_esc(signal or 'NEUTRAL')}</b>", styles["cover_sub"])],
         ],
         colWidths=[CONTENT_W],
     )
@@ -300,7 +316,9 @@ def build_cover(data: dict[str, Any], address: str, styles: dict[str, ParagraphS
         )
     )
 
-    snap = data.get("demographic_snapshot", {})
+    snap = data.get("demographic_snapshot") or {}
+    if not isinstance(snap, dict):
+        snap = {}
     kpis = [
         ("Population", f"{snap.get('total_population', 0):,}" if snap.get("total_population") else "—"),
         (
@@ -347,12 +365,14 @@ def build_narrative(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> 
         value = narrative.get(key)
         if value:
             story.append(Paragraph(title, styles["subsection_header"]))
-            story.append(Paragraph(value, styles["body"]))
+            story.append(Paragraph(_esc(value), styles["body"]))
     return story
 
 
-def build_zoning(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
-    z = data.get("zoning_and_planning", {})
+def build_zoning(data: dict[str, Any], styles: dict[str, ParagraphStyle], variant: str = "full") -> list:
+    z = data.get("zoning_and_planning") or {}
+    if not isinstance(z, dict):
+        z = {}
     story = section_title("Zoning & Planning", styles)
     rows = [
         ("Zoning Code", z.get("zoning_code") or "—"),
@@ -361,31 +381,111 @@ def build_zoning(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> lis
         ("Heritage Area", "Yes" if z.get("heritage_area") else "No"),
         ("Subdivision", z.get("subdivision_potential") or "—"),
         ("EPI Name", z.get("epi_name") or "—"),
+        ("EPI Type", z.get("epi_type") or "—"),
         ("Confidence", f"{(z.get('confidence_score') or 0) * 100:.0f}%"),
     ]
     story.append(two_col_table(rows, styles))
+    if variant == "full":
+        conflict_note = z.get("conflict_note")
+        if conflict_note:
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph(f"<b>Planning Note:</b> {_esc(conflict_note)}", styles["body_small"]))
     overlays = z.get("overlays") or []
-    if overlays:
+    if overlays and isinstance(overlays, list):
         story.append(Spacer(1, 3 * mm))
         story.append(Paragraph("Planning Overlays", styles["subsection_header"]))
         story.append(overlay_table(overlays, styles))
     return story
 
 
-def build_risk(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
-    rf = data.get("risk_factors", {})
+def build_risk(data: dict[str, Any], styles: dict[str, ParagraphStyle], variant: str = "full") -> list:
+    rf = data.get("risk_factors") or {}
+    if not isinstance(rf, dict):
+        rf = {}
     story = section_title("Risk Factors", styles)
+    flood = rf.get("flood") if isinstance(rf.get("flood"), dict) else {}
+    bushfire = rf.get("bushfire") if isinstance(rf.get("bushfire"), dict) else {}
+    crime = rf.get("crime_density") if isinstance(rf.get("crime_density"), dict) else {}
     rows = [
-        ("Flood Risk", rf.get("flood", {}).get("risk") or "—"),
-        ("Bushfire Risk", rf.get("bushfire", {}).get("risk") or "—"),
-        ("Crime Density", rf.get("crime_density", {}).get("rating") or "—"),
+        ("Flood Risk", flood.get("risk") or "—"),
+        ("Bushfire Risk", bushfire.get("risk") or "—"),
+        ("Crime Density", crime.get("rating") or "—"),
     ]
     story.append(two_col_table(rows, styles))
+    if variant == "full":
+        for label, item in [("Flood", flood), ("Bushfire", bushfire), ("Crime Density", crime)]:
+            detail = item.get("detail")
+            if detail:
+                story.append(Spacer(1, 2 * mm))
+                story.append(Paragraph(f"<b>{label}:</b> {_esc(detail)}", styles["body_small"]))
+    return story
+
+
+def infrastructure_table(rows: list[tuple[str, str, str, str]], styles: dict[str, ParagraphStyle]) -> Table:
+    header = [
+        Paragraph("<b>Type</b>", styles["body_small"]),
+        Paragraph("<b>Project / Description</b>", styles["body_small"]),
+        Paragraph("<b>Distance</b>", styles["body_small"]),
+        Paragraph("<b>Est. Year</b>", styles["body_small"]),
+    ]
+    table_rows: list[list[Any]] = [header]
+    for typ, desc, dist, yr in rows:
+        table_rows.append(
+            [
+                Paragraph(f"<b>{typ}</b>", styles["body_small"]),
+                Paragraph(desc, styles["body_small"]),
+                Paragraph(dist, styles["body_small"]),
+                Paragraph(yr, styles["body_small"]),
+            ]
+        )
+    t = Table(table_rows, colWidths=[28 * mm, CONTENT_W - 68 * mm, 22 * mm, 18 * mm])
+    t.setStyle(
+        TableStyle(
+            [
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.3, HexColor("#E5E7EB")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    return t
+
+
+def build_infrastructure(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list[Any]:
+    items = data.get("infrastructure") or []
+    story = section_title("Infrastructure", styles)
+    if not items:
+        story.append(Paragraph("No nearby infrastructure data available.", styles["body_small"]))
+        return story
+
+    def sort_key(item: Any) -> float:
+        if not isinstance(item, dict):
+            return float("inf")
+        d = item.get("distance_km")
+        return d if isinstance(d, (int, float)) else float("inf")
+
+    rows = []
+    for item in sorted(items, key=sort_key):
+        if not isinstance(item, dict):
+            continue
+        dist_val = item.get("distance_km")
+        distance = f"{dist_val:.1f} km" if isinstance(dist_val, (int, float)) else "—"
+        year = str(item.get("expected_completion_year") or "—")
+        item_type = _esc(item.get("type") or "OTHER")
+        item_desc = _esc(item.get("description") or "—")
+        rows.append((item_type, item_desc, distance, year))
+    if not rows:
+        story.append(Paragraph("No nearby infrastructure data available.", styles["body_small"]))
+        return story
+    story.append(infrastructure_table(rows, styles))
     return story
 
 
 def build_connectivity(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
-    conn = data.get("connectivity", {})
+    conn = data.get("connectivity") or {}
+    if not isinstance(conn, dict):
+        conn = {}
     story = section_title("Connectivity", styles)
     rows = [
         ("NBN Technology", conn.get("nbn_tech_type") or "—"),
@@ -401,53 +501,62 @@ def build_connectivity(data: dict[str, Any], styles: dict[str, ParagraphStyle]) 
 def build_education(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
     """Build education section with nearby schools."""
     edu = data.get("education", {})
+    if not isinstance(edu, dict):
+        edu = {}
     story = section_title("Local Schools", styles)
-    
+
     # Add summary narrative if available
     summary = edu.get("nearby_schools_summary")
     if summary:
-        story.append(Paragraph(summary, styles["body"]))
+        story.append(Paragraph(_esc(summary), styles["body"]))
         story.append(Spacer(1, 3 * mm))
-    
+
     # Build schools table
-    primary = edu.get("primary_schools", [])
-    secondary = edu.get("secondary_schools", [])
-    
+    primary = edu.get("primary_schools") or []
+    secondary = edu.get("secondary_schools") or []
+
     # Combine schools with their type; limit to 8 total for readability
     all_schools = []
-    for school in primary[:4]:  # Max 4 primary
-        all_schools.append({
-            "name": school.get("name", ""),
-            "distance": school.get("distance_km", 0),
-            "in_catchment": school.get("in_catchment", False),
-            "enrolments": school.get("enrolments"),
-            "type": "Primary",
-        })
-    for school in secondary[:4]:  # Max 4 secondary
-        all_schools.append({
-            "name": school.get("name", ""),
-            "distance": school.get("distance_km", 0),
-            "in_catchment": school.get("in_catchment", False),
-            "enrolments": school.get("enrolments"),
-            "type": "Secondary",
-        })
-    
+    if isinstance(primary, list):
+        for school in primary[:4]:  # Max 4 primary
+            if not isinstance(school, dict):
+                continue
+            all_schools.append({
+                "name": school.get("name") or "—",
+                "distance": school.get("distance_km") if isinstance(school.get("distance_km"), (int, float)) else None,
+                "in_catchment": bool(school.get("in_catchment", False)),
+                "enrolments": school.get("enrolments"),
+                "type": "Primary",
+            })
+    if isinstance(secondary, list):
+        for school in secondary[:4]:  # Max 4 secondary
+            if not isinstance(school, dict):
+                continue
+            all_schools.append({
+                "name": school.get("name") or "—",
+                "distance": school.get("distance_km") if isinstance(school.get("distance_km"), (int, float)) else None,
+                "in_catchment": bool(school.get("in_catchment", False)),
+                "enrolments": school.get("enrolments"),
+                "type": "Secondary",
+            })
+
     if all_schools:
         rows: list[list[Any]] = []
         for school in all_schools:
             catchment_badge = "✓ IN" if school["in_catchment"] else "Outside"
             enrol_text = f"{school['enrolments']:,}" if school["enrolments"] else "—"
-            
+            dist_text = f"{school['distance']:.2f} km" if school["distance"] is not None else "—"
+
             rows.append(
                 [
-                    Paragraph(f"<b>{school['type']}</b>", styles["body_small"]),
-                    Paragraph(school["name"], styles["body_small"]),
-                    Paragraph(f"{school['distance']:.2f} km", styles["body_small"]),
+                    Paragraph(f"<b>{_esc(school['type'])}</b>", styles["body_small"]),
+                    Paragraph(_esc(school["name"]), styles["body_small"]),
+                    Paragraph(dist_text, styles["body_small"]),
                     Paragraph(catchment_badge, styles["body_small"]),
                     Paragraph(enrol_text, styles["body_small"]),
                 ]
             )
-        
+
         t = Table(rows, colWidths=[18 * mm, CONTENT_W * 0.45, 18 * mm, 20 * mm, 22 * mm])
         t.setStyle(
             TableStyle(
@@ -463,7 +572,7 @@ def build_education(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> 
         story.append(t)
     else:
         story.append(Paragraph("No schools found within 3km radius.", styles["body"]))
-    
+
     return story
 
 
@@ -1209,7 +1318,9 @@ def build_lite_upgrade_cta(styles: dict[str, ParagraphStyle]) -> list:
 
 
 def build_trend_analysis(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
-    trend = data.get("demographic_trend_analysis", {})
+    trend = data.get("demographic_trend_analysis") or {}
+    if not isinstance(trend, dict):
+        trend = {}
     story = section_title("Demographic Trend Analysis", styles)
     rows = [
         ("Population Momentum", trend.get("population_momentum") or "—"),
@@ -1224,7 +1335,7 @@ def build_trend_analysis(data: dict[str, Any], styles: dict[str, ParagraphStyle]
 
     note = trend.get("overall_investment_signal_note")
     if note:
-        box = Table([[Paragraph(note, styles["body"])]], colWidths=[CONTENT_W])
+        box = Table([[Paragraph(_esc(note), styles["body"])]], colWidths=[CONTENT_W])
         box.setStyle(
             TableStyle(
                 [
@@ -1242,7 +1353,9 @@ def build_trend_analysis(data: dict[str, Any], styles: dict[str, ParagraphStyle]
 
 
 def build_roi(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
-    roi = data.get("roi_scenarios", {})
+    roi = data.get("roi_scenarios") or {}
+    if not isinstance(roi, dict):
+        roi = {}
     story = section_title("ROI Scenarios", styles)
     scenarios = roi.get("scenarios") or []
     if scenarios:
@@ -1287,7 +1400,7 @@ def build_roi(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list:
         )
         story.append(t)
     if roi.get("disclaimer"):
-        story.extend([Spacer(1, 4 * mm), Paragraph(roi.get("disclaimer"), styles["disclaimer"])])
+        story.extend([Spacer(1, 4 * mm), Paragraph(_esc(roi.get("disclaimer")), styles["disclaimer"])])
     return story
 
 
@@ -1312,11 +1425,13 @@ def build_report(
             story.append(PageBreak())
         story += build_narrative(data, styles)
         story.append(PageBreak())
-        story += build_zoning(data, styles)
+        story += build_zoning(data, styles, variant=variant)
         story.append(Spacer(1, 4 * mm))
-        story += build_risk(data, styles)
+        story += build_risk(data, styles, variant=variant)
         story.append(Spacer(1, 4 * mm))
         story += build_connectivity(data, styles)
+        story.append(Spacer(1, 4 * mm))
+        story += build_infrastructure(data, styles)
         story.append(Spacer(1, 4 * mm))
         story += build_education(data, styles)
         story.append(PageBreak())
@@ -1326,9 +1441,9 @@ def build_report(
         story.append(PageBreak())
         story += build_roi(data, styles)
     else:
-        story += build_zoning(data, styles)
+        story += build_zoning(data, styles, variant=variant)
         story.append(Spacer(1, 4 * mm))
-        story += build_risk(data, styles)
+        story += build_risk(data, styles, variant=variant)
         story.append(Spacer(1, 4 * mm))
         story += build_connectivity(data, styles)
         story.append(Spacer(1, 4 * mm))

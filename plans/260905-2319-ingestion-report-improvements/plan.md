@@ -75,9 +75,9 @@ credit-gated, API fields).
 | 2 | [Phase 2: Anthropic & Google AI Provider Adapters](./phase-02-llm-provider-abstraction.md) | Completed | 1 |
 | 3 | [Phase 3: Wire Rate Limiter & Daily Quota Into the Call Path](./phase-03-llm-rate-limit-wiring.md) | Completed | 1 |
 | 4 | [Phase 4: Fix ABS `_add_growth_rates()` No-Op Bug](./phase-04-abs-growth-rate-bugfix.md) | Completed | — |
-| 5 | [Phase 5: PDF Report Data Enrichment](./phase-05-pdf-report-data-enrichment.md) | Pending | — |
+| 5 | [Phase 5: PDF Report Data Enrichment](./phase-05-pdf-report-data-enrichment.md) | Completed | — |
 | 6 | [Phase 6: Web UI Report Parity](./phase-06-web-ui-report-parity.md) | Completed | — |
-| 7 | [Phase 7: Sync Docs to Implementation](./phase-07-docs-sync.md) | Pending | 2, 3, 4, 5, 6 |
+| 7 | [Phase 7: Sync Docs to Implementation](./phase-07-docs-sync.md) | Completed | 2, 3, 4, 5, 6 |
 
 Phases 1-3 (LLM worker) and 4 (ABS bugfix) and 5-6 (report data) touch disjoint
 files/services and can be executed in parallel by separate workstreams once
@@ -87,16 +87,16 @@ run last.
 
 ## Success Criteria
 
-- [ ] `LLM_PROVIDER` env var selects between `openai` / `anthropic` / `google`; each produces valid `LlmOutput` JSON against the existing Pydantic schema with no changes to `tasks.py`'s call site, and `llm_model_version` correctly reflects whichever provider ran.
-- [ ] A non-mutating quota check and a bounded token wait run before every LLM API request; a forced quota-exceeded/rate-limit condition demonstrably delays/retries instead of bursting through, and never leaves a report silently stuck in `PROCESSING`.
-- [ ] A property with 2+ *consecutive* years of cached ABS time-series data shows non-null `*_growth_pct_yoy` fields — including properties whose LGA was already cached before this plan shipped.
-- [ ] Full-report PDF renders an "Infrastructure" section and shows risk `.detail` text + zoning `conflict_note`/`epi_type` when present in `llm_parsed_insights`; the free lite PDF shows none of that analyst-commentary text; malformed LLM text does not crash generation; a previously-cached PDF picks up the new content on next download.
-- [ ] `apps/public-web` property detail page renders Narrative, Demographic Trend Analysis, ROI Scenarios, and Infrastructure sections **only for authenticated users** — anonymous viewers see today's five sections, unchanged.
-- [ ] `AGENTS.md`, `docs/06-llm-parser-worker.md`, `docs/current_data_flow.md`, and all other stale-reference files found during review and red-team (README.md, TESTING.md, prompt docstrings, `docs/01-system-architecture.md`, `docs/10-testing-strategy.md`) no longer mention Gemini/NVIDIA as the sole or default provider, and no longer claim rate limiting works when it didn't (until Phase 3 lands).
-- [ ] All existing unit and integration tests pass; new tests added for provider registry selection, rate-limiter call-site wiring (including the quota-exhaustion-then-FAILED path), auth-gated `/detail` responses, and PDF variant-gating.
-- [ ] `services/admin-backend`'s quota dashboard widget keeps working during a rolling deploy against either an old or new pod (dual-emit), and no `GeminiQuotaStats`/`gemini_quota` naming survives past the compatibility window.
-- [ ] No provider API key ever appears in a log line or a `property_reports.error_message` value.
-- [ ] `services/public-api` and `services/admin-backend` Docker builds succeed against `shared/pdf-renderer`'s updated lockfile.
+- [x] `LLM_PROVIDER` env var selects between `openai` / `anthropic` / `google`; each produces valid `LlmOutput` JSON against the existing Pydantic schema with no changes to `tasks.py`'s call site, and `llm_model_version` correctly reflects whichever provider ran.
+- [x] A non-mutating quota check and a bounded token wait run before every LLM API request; a forced quota-exceeded/rate-limit condition demonstrably delays/retries instead of bursting through, and never leaves a report silently stuck in `PROCESSING`.
+- [x] A property with 2+ *consecutive* years of cached ABS time-series data shows non-null `*_growth_pct_yoy` fields — including properties whose LGA was already cached before this plan shipped.
+- [x] Full-report PDF renders an "Infrastructure" section and shows risk `.detail` text + zoning `conflict_note`/`epi_type` when present in `llm_parsed_insights`; the free lite PDF shows none of that analyst-commentary text; malformed LLM text does not crash generation; a previously-cached PDF picks up the new content on next download.
+- [x] `apps/public-web` property detail page renders Narrative, Demographic Trend Analysis, ROI Scenarios, and Infrastructure sections **only for authenticated users** — anonymous viewers see today's five sections, unchanged.
+- [x] `AGENTS.md`, `docs/06-llm-parser-worker.md`, `docs/current_data_flow.md`, and all other stale-reference files found during review and red-team (README.md, TESTING.md, prompt docstrings, `docs/01-system-architecture.md`, `docs/10-testing-strategy.md`) no longer mention Gemini/NVIDIA as the sole or default provider, and no longer claim rate limiting works when it didn't (until Phase 3 lands).
+- [x] All existing unit and integration tests pass; new tests added for provider registry selection, rate-limiter call-site wiring (including the quota-exhaustion-then-FAILED path), auth-gated `/detail` responses, and PDF variant-gating.
+- [x] `services/admin-backend`'s quota dashboard widget keeps working during a rolling deploy against either an old or new pod (dual-emit), and no `GeminiQuotaStats`/`gemini_quota` naming survives past the compatibility window.
+- [x] No provider API key ever appears in a log line or a `property_reports.error_message` value.
+- [x] `services/public-api` and `services/admin-backend` Docker builds succeed against `shared/pdf-renderer`'s updated lockfile.
 
 ## Validation Log
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+
 from minio import Minio
 from minio.error import S3Error
 
@@ -24,11 +25,14 @@ def _get_client() -> Minio:
     return _client
 
 
+_RENDERER_VERSION = "v2"  # bump whenever a rendered section changes in a way that should invalidate cached PDFs
+
+
 def build_report_pdf_object_key(report_id: str, variant: str = "full") -> str:
     safe_variant = variant.lower().strip() if variant else "full"
     if safe_variant == "full":
-        return f"reports/{report_id}.pdf"
-    return f"reports/{report_id}.{safe_variant}.pdf"
+        return f"reports/{report_id}.{_RENDERER_VERSION}.pdf"
+    return f"reports/{report_id}.{safe_variant}.{_RENDERER_VERSION}.pdf"
 
 
 def report_pdf_exists(object_key: str) -> bool:

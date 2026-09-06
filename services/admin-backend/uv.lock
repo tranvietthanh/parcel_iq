@@ -591,7 +591,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "httpx", marker = "extra == 'dev'" },
     { name = "minio", specifier = ">=7.2,<8" },
-    { name = "ozpr-pdf-renderer", directory = "../../shared/pdf-renderer" },
+    { name = "ozpr-pdf-renderer", directory = "/home/thanhtran/Projects/parcel_iq/shared/pdf-renderer" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
@@ -606,7 +606,7 @@ provides-extras = ["dev"]
 [[package]]
 name = "ozpr-pdf-renderer"
 version = "0.1.0"
-source = { directory = "../../shared/pdf-renderer" }
+source = { directory = "/home/thanhtran/Projects/parcel_iq/shared/pdf-renderer" }
 dependencies = [
     { name = "httpx" },
     { name = "minio" },
@@ -617,8 +617,11 @@ dependencies = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "minio", specifier = ">=7.0,<8" },
+    { name = "pypdf", marker = "extra == 'dev'", specifier = ">=5,<6" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
     { name = "reportlab", specifier = ">=4.2,<5" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "packaging"

@@ -1,4 +1,4 @@
-"""User prompt builder for the Gemini extraction model.
+"""User prompt builder for the structured extraction model.
 
 Constructs a prompt from raw scraped data, including the expected JSON schema
 so the model knows exactly what to return.
@@ -454,7 +454,7 @@ def _compute_trend_hints(time_series: dict) -> str:
 
 
 def build_user_prompt(address: str, raw_data: dict) -> str:
-    """Build the user prompt for Gemini from raw scraped property data.
+    """Build the user prompt for the configured LLM provider from raw scraped property data.
 
     Args:
         address: Full address string (e.g. "1 Collins St, Melbourne VIC 3000").

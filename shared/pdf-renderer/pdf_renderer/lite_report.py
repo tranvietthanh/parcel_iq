@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 from datetime import datetime
+from io import BytesIO
 from typing import Any
 
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     BaseDocTemplate,
@@ -349,7 +349,7 @@ def build_schools(data: dict[str, Any], styles: dict[str, ParagraphStyle]) -> li
 def build_cta(styles: dict[str, ParagraphStyle]) -> list:
     """Build call-to-action section."""
     story = [Spacer(1, 4 * mm)]
-    
+
     cta_box = Table(
         [
             [

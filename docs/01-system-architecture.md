@@ -105,7 +105,7 @@ INTERNET
                      ▼                                 ▼
         ┌────────────────────────┐     ┌──────────────────────────────┐
         │  SCRAPER WORKERS       │     │  LLM PARSER WORKERS          │
-        │  Celery + Playwright   │     │  Celery + Gemini API         │
+        │  Celery + Playwright   │     │  Celery + Configured LLM API │
         │  ClusterIP only        │     │  ClusterIP only              │
         └────────────────────────┘     └──────────────────────────────┘
                      │
@@ -132,7 +132,7 @@ INTERNET
 | Database | `infra/postgres` | PostgreSQL 16 + PostGIS 3.4 | Internal only | All persistent data |
 | Task Broker | `infra/redis` | Redis 7 | Internal only | Celery broker + result backend |
 | Scraper Workers | `services/scraper-worker` | Python 3.12, Celery, Playwright | Internal only | National data acquisition |
-| LLM Workers | `services/llm-parser-worker` | Python 3.12, Celery, OpenAI Chat Completions | Internal only | AI extraction, confidence scoring, email notification, Celery Beat schedule |
+| LLM Workers | `services/llm-parser-worker` | Python 3.12, Celery, LLM Provider Factory (OpenAI/Anthropic/Google) | Internal only | AI extraction, confidence scoring, email notification, Celery Beat schedule |
 | Object Storage | `infra/minio` | MinIO | Internal only | PDFs, raw scrape cache |
 | Job Monitor | `infra/flower` | Flower 2.x | **Internal only (ClusterIP)** | Celery UI, proxied by Admin Backend API |
 
@@ -394,8 +394,13 @@ WORKER_CONCURRENCY=3
 # ── LLM Parser Worker ───────────────────────────────────────────────
 DATABASE_URL=postgresql+psycopg2://parceliq:pass@postgres:5432/parceliq
 REDIS_URL=redis://redis:6379/0
+LLM_PROVIDER=openai               # openai | anthropic | google
 OPENAI_API_KEY=<OpenAI API key>   # sk_...
 OPENAI_MODEL=gpt-3.5-turbo        # or gpt-4o-mini, gpt-4o
+ANTHROPIC_API_KEY=<Anthropic key> # sk-ant-...
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+GOOGLE_API_KEY=<Google AI key>
+GOOGLE_MODEL=gemini-1.5-pro
 LLM_DAILY_QUOTA=100000
 LLM_MAX_RPM=60
 RESEND_API_KEY=<Resend API key>

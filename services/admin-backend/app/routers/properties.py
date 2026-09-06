@@ -348,10 +348,12 @@ async def delete_property_report(
             detail="Cannot delete a report that has been downloaded by users",
         )
 
-    # Delete cached PDFs
+    # Delete cached PDFs (both versioned and legacy unversioned keys)
     object_keys = [
         build_report_pdf_object_key(report_id, "full"),
         build_report_pdf_object_key(report_id, "lite"),
+        f"reports/{report_id}.pdf",
+        f"reports/{report_id}.lite.pdf",
     ]
     try:
         for object_key in object_keys:

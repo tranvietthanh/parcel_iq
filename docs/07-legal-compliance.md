@@ -112,6 +112,9 @@ If ParcelIQ states a property is outside a flood zone and the property subsequen
 - Every data point must have a `source` field referencing the original data provider
 - Reports with `overall_confidence = 'LOW'` are served to users with a visible low-confidence warning indicator
 
+> [!NOTE]
+> **Manual Review Gate Status:** The low-confidence manual-review queue (`review_flag`) was intentionally removed in migration `023_on_demand_property_ingestion` (collapsing report status to `QUEUING`/`PROCESSING`/`READY`/`FAILED`). The LLM worker marks reports `READY` directly and stores `overall_confidence` for user display with low-confidence indicators. Its removal is a standing architectural decision. Any future re-introduction of a manual review gate is a separate product and compliance decision, not an open bug to fix.
+
 **In the UI:**
 - Low-confidence fields (< 0.7) must display a warning indicator: `⚠️ Lower confidence data — verify independently`
 - Every data point must display its source (e.g. "Source: DELWP VicPlan API, February 2026")

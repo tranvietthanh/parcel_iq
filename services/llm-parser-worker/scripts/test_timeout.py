@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test script to diagnose NVIDIA API timeout with real data."""
+"""Test script to diagnose LLM API timeout with real data."""
 
 import json
 import sys

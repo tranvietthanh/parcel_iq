@@ -1,6 +1,6 @@
 """Integration tests for the parse_with_llm task pipeline.
 
-Mocks the Gemini API client and database to test the full task flow:
+Mocks the LLM API client and database to test the full task flow:
 prompt building → LLM call → Pydantic validation → confidence scoring → DB upsert.
 """
 
@@ -39,7 +39,7 @@ class TestParseWithLlmTask:
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
-    def test_happy_path_ready(self, mock_gemini: MagicMock, mock_db_conn: MagicMock) -> None:
+    def test_happy_path_ready(self, mock_llm: MagicMock, mock_db_conn: MagicMock) -> None:
         """Valid LLM output with high confidence → status READY."""
         from app.tasks import parse_with_llm
 
@@ -53,8 +53,8 @@ class TestParseWithLlmTask:
         # Mock fetchone returns raw_scraped_data
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
 
-        # Mock Gemini returns valid JSON
-        mock_gemini.generate_json.return_value = valid_llm_json()
+        # Mock LLM returns valid JSON
+        mock_llm.generate_json.return_value = valid_llm_json()
 
         # Execute (use .run() to bypass Celery machinery)
         parse_with_llm.run(
@@ -76,7 +76,7 @@ class TestParseWithLlmTask:
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
     def test_low_confidence_still_publishes_ready(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
+        self, mock_llm: MagicMock, mock_db_conn: MagicMock
     ) -> None:
         """Low confidence output still publishes as READY."""
         from app.tasks import parse_with_llm
@@ -89,7 +89,7 @@ class TestParseWithLlmTask:
         mock_db.cursor.return_value.__exit__ = MagicMock(return_value=False)
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
 
-        mock_gemini.generate_json.return_value = low_confidence_llm_json()
+        mock_llm.generate_json.return_value = low_confidence_llm_json()
 
         parse_with_llm.run(
             property_id="prop-123",
@@ -106,9 +106,9 @@ class TestParseWithLlmTask:
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
     def test_invalid_llm_json_causes_retry(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
+        self, mock_llm: MagicMock, mock_db_conn: MagicMock
     ) -> None:
-        """Invalid JSON from Gemini → task retries."""
+        """Invalid JSON from LLM → task retries."""
         from app.tasks import parse_with_llm
 
         mock_db = MagicMock()
@@ -118,7 +118,7 @@ class TestParseWithLlmTask:
         mock_db.cursor.return_value.__exit__ = MagicMock(return_value=False)
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
 
-        mock_gemini.generate_json.return_value = '{"invalid": "json structure"}'
+        mock_llm.generate_json.return_value = '{"invalid": "json structure"}'
 
         # Task should raise (which triggers Celery retry in production)
         with pytest.raises(Exception):
@@ -131,9 +131,9 @@ class TestParseWithLlmTask:
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
     def test_rate_limit_triggers_retry(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
+        self, mock_llm: MagicMock, mock_db_conn: MagicMock
     ) -> None:
-        """RATE_LIMIT error from Gemini → task retries via Celery."""
+        """RATE_LIMIT error from LLM → task retries via Celery."""
         from app.tasks import parse_with_llm
 
         mock_db = MagicMock()
@@ -143,7 +143,7 @@ class TestParseWithLlmTask:
         mock_db.cursor.return_value.__exit__ = MagicMock(return_value=False)
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
 
-        mock_gemini.generate_json.side_effect = RuntimeError("RATE_LIMIT: 429 Too Many Requests")
+        mock_llm.generate_json.side_effect = RuntimeError("RATE_LIMIT: 429 Too Many Requests")
 
         # The task calls self.retry() which raises Retry in production.
         # Running with .run() bypasses the Celery retry mechanism, so it raises RuntimeError
@@ -156,7 +156,7 @@ class TestParseWithLlmTask:
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
-    def test_no_report_found_raises(self, mock_gemini: MagicMock, mock_db_conn: MagicMock) -> None:
+    def test_no_report_found_raises(self, mock_llm: MagicMock, mock_db_conn: MagicMock) -> None:
         """Missing report row → ValueError."""
         from app.tasks import parse_with_llm
 
@@ -176,7 +176,7 @@ class TestParseWithLlmTask:
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
-    def test_stores_model_version(self, mock_gemini: MagicMock, mock_db_conn: MagicMock) -> None:
+    def test_stores_model_version(self, mock_llm: MagicMock, mock_db_conn: MagicMock) -> None:
         """The llm_model_version column should be set from active provider."""
         from app.tasks import parse_with_llm
 
@@ -186,8 +186,8 @@ class TestParseWithLlmTask:
         mock_db.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_db.cursor.return_value.__exit__ = MagicMock(return_value=False)
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
-        mock_gemini.generate_json.return_value = valid_llm_json()
-        mock_gemini.model_name = "test-provider-model-v1"
+        mock_llm.generate_json.return_value = valid_llm_json()
+        mock_llm.model_name = "test-provider-model-v1"
 
         parse_with_llm.run(
             property_id="prop-123",
@@ -197,12 +197,12 @@ class TestParseWithLlmTask:
 
         # Check model version is in the final UPDATE params
         last_update_params = _report_update_params(mock_cursor)
-        assert mock_gemini.model_name in last_update_params
+        assert mock_llm.model_name in last_update_params
 
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
     def test_upserts_parsed_insights_as_json(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
+        self, mock_llm: MagicMock, mock_db_conn: MagicMock
     ) -> None:
         """llm_parsed_insights should be stored as valid JSON string."""
         from app.tasks import parse_with_llm
@@ -213,7 +213,7 @@ class TestParseWithLlmTask:
         mock_db.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_db.cursor.return_value.__exit__ = MagicMock(return_value=False)
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
-        mock_gemini.generate_json.return_value = valid_llm_json()
+        mock_llm.generate_json.return_value = valid_llm_json()
 
         parse_with_llm.run(
             property_id="prop-123",
@@ -231,7 +231,7 @@ class TestParseWithLlmTask:
     @patch("app.tasks.get_db_connection")
     @patch("app.tasks.llm_client")
     def test_accepts_markdown_fenced_json(
-        self, mock_gemini: MagicMock, mock_db_conn: MagicMock
+        self, mock_llm: MagicMock, mock_db_conn: MagicMock
     ) -> None:
         """Markdown fenced JSON should be cleaned and parsed successfully."""
         from app.tasks import parse_with_llm
@@ -244,7 +244,7 @@ class TestParseWithLlmTask:
         mock_cursor.fetchone.return_value = {"raw_scraped_data": SAMPLE_RAW_DATA}
 
         fenced = f"```json\n{valid_llm_json()}\n```"
-        mock_gemini.generate_json.return_value = fenced
+        mock_llm.generate_json.return_value = fenced
 
         parse_with_llm.run(
             property_id="prop-123",

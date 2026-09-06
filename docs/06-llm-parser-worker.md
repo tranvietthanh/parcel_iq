@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-**Technology:** Python 3.12, Celery, httpx (OpenAI), Pydantic v2, psycopg2  
-**Purpose:** Takes raw scraped data from the `llm_processing_queue`, sends it to OpenAI via the Chat Completions API for structured extraction, validates the output with Pydantic v2, computes confidence scores, upserts results to `property_reports`, and sends a report-ready email to the requesting user.
+**Technology:** Python 3.12, Celery, httpx, Pydantic v2, psycopg2  
+**Purpose:** Takes raw scraped data from the `llm_processing_queue`, sends it to the configured LLM provider (OpenAI, Anthropic, or Google AI via factory pattern) for structured extraction, validates the output with Pydantic v2, computes confidence scores, upserts results to `property_reports`, and sends a report-ready email to the requesting user.
 
-**Rate limiting:** Configure `OPENAI_MAX_RPM` and `OPENAI_DAILY_QUOTA` in `services/llm-parser-worker/.env` (defaults: `OPENAI_MAX_RPM=60`, `OPENAI_DAILY_QUOTA=100000`).
+**Rate limiting:** Configure `LLM_MAX_RPM` and `LLM_DAILY_QUOTA` in `services/llm-parser-worker/.env` (defaults: `LLM_MAX_RPM=60`, `LLM_DAILY_QUOTA=100000`).
 
-The worker uses a Redis-backed token bucket to enforce limits strictly across all worker processes. Also configure `OPENAI_API_KEY`, `OPENAI_MODEL` (default: `gpt-3.5-turbo`), `RESEND_API_KEY`, and `PUBLIC_WEB_URL` in `services/llm-parser-worker/.env`.
+The worker uses a Redis-backed token bucket to enforce limits strictly across all worker processes. Also configure `LLM_PROVIDER` (default: `openai`), provider credentials (`OPENAI_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_API_KEY`, `GOOGLE_MODEL`), `RESEND_API_KEY`, and `PUBLIC_WEB_URL` in `services/llm-parser-worker/.env`.
 
 **Celery Beat:** The Celery Beat schedule (monthly state refreshes and DLQ monitoring) is embedded in this worker's `celery_app.py`. One pod is started with `--beat` in production.
 
@@ -19,13 +19,18 @@ The worker uses a Redis-backed token bucket to enforce limits strictly across al
 /llm-parser-worker
 ├── app/
 │   ├── celery_app.py              # Celery app factory (shares config with scraper)
-│   ├── config.py                  # pydantic-settings (OPENAI_*, RESEND_API_KEY, PUBLIC_WEB_URL)
+│   ├── config.py                  # pydantic-settings (LLM_*, OPENAI_*, ANTHROPIC_*, GOOGLE_*, RESEND_API_KEY, PUBLIC_WEB_URL)
 │   ├── tasks.py                   # Celery task: parse_with_llm
 │   ├── services/
-│   │   ├── llm_client.py          # OpenAI client (Chat Completions)
-│   │   ├── email.py               # Resend email — sends report-ready notification
+│   │   ├── llm_factory.py         # Provider factory (OpenAI, Anthropic, Google AI)
+│   │   ├── providers/             # Base and provider adapter implementations
+│   │   │   ├── base.py
+│   │   │   ├── openai_provider.py
+│   │   │   ├── anthropic_provider.py
+│   │   │   └── google_provider.py
+│   │   ├── email_service.py       # Resend email — sends report-ready notification
 │   │   ├── db.py                  # psycopg2 (sync)
-│   │   └── rate_limiter.py        # Redis token bucket (cross-process safe)
+│   │   └── rate_limiter.py        # Redis token bucket + daily quota (cross-process safe)
 │   ├── prompts/
 │   │   ├── system_prompt.py       # System prompt constant
 │   │   └── user_prompt.py         # User prompt builder function
@@ -49,7 +54,8 @@ from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.prompts.user_prompt import build_user_prompt
 from app.schemas.llm_output import LlmOutput
 from app.schemas.confidence import compute_confidence
-from app.services.llm_client import llm_client  # OpenAI client (Chat Completions)
+from app.services.llm_factory import get_llm_client, llm_client
+from app.services.rate_limiter import wait_for_token, is_daily_quota_exhausted, record_llm_request
 from app.config import settings
 
 import json
@@ -97,7 +103,13 @@ def parse_with_llm(
         user_prompt = build_user_prompt(address_string, raw_data)
 
         # 4. Call configured LLM API (blocks until a rate limit token is available)
+        if is_daily_quota_exhausted():
+            raise RuntimeError(
+                f"DAILY_QUOTA_EXCEEDED: {settings.LLM_DAILY_QUOTA} requests already used today"
+            )
+        wait_for_token()
         raw_json_str = llm_client.generate_json(SYSTEM_PROMPT, user_prompt)
+        record_llm_request()
 
         # 5. Parse + validate with Pydantic v2
         try:
@@ -111,9 +123,8 @@ def parse_with_llm(
         # 7. Determine final status
         new_status = "READY"
 
-        # 8. Upsert results into property_reports
-        # Use configured OpenAI model name as the model version
-        model_version = settings.OPENAI_MODEL
+        # Use configured active model name as the model version
+        model_version = getattr(llm_client, "model_name", "unknown")
         
         with db.cursor() as cur:
             cur.execute(
@@ -187,39 +198,42 @@ def parse_with_llm(
 
 ## 4. Redis Token Bucket Rate Limiter (`services/rate_limiter.py`)
 
-Using Redis for the token bucket makes it **cross-process safe** — multiple Celery worker processes on the same pod all share one rate limit counter.
+Using Redis for the token bucket makes it **cross-process safe** — multiple Celery worker processes on the same pod all share one rate limit counter and daily quota.
 
 ```python
 import time
+from datetime import datetime, timezone
 import redis as redis_lib
 from app.config import settings
 
 redis_client = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
 
-MAX_RPM = settings.OPENAI_MAX_RPM
+TOKEN_KEY = "llm:rate_limit:tokens"
+LAST_REFILL_KEY = "llm:rate_limit:last_refill"
+DAILY_COUNT_KEY_PREFIX = "llm:daily_count:"
 WINDOW_SECONDS = 60
-TOKEN_KEY = "openai:rate_limit:tokens"
-LAST_REFILL_KEY = "openai:rate_limit:last_refill"
-DAILY_COUNT_KEY_PREFIX = "openai:daily_count:"
 
 
-def wait_for_token() -> None:
+def wait_for_token(max_wait_seconds: int = 240) -> None:
     """
     Blocks the calling thread until a rate limit token is available.
     Safe to call from multiple Celery worker processes simultaneously.
     """
+    deadline = time.monotonic() + max_wait_seconds
     while True:
+        if time.monotonic() > deadline:
+            raise RuntimeError("RATE_LIMIT: token wait exceeded max_wait_seconds")
         with redis_client.pipeline() as pipe:
             try:
                 pipe.watch(TOKEN_KEY, LAST_REFILL_KEY)
-                tokens = int(redis_client.get(TOKEN_KEY) or MAX_RPM)
+                tokens = int(redis_client.get(TOKEN_KEY) or settings.LLM_MAX_RPM)
                 last_refill = float(redis_client.get(LAST_REFILL_KEY) or time.time())
                 now = time.time()
                 elapsed = now - last_refill
-                tokens_to_add = int(elapsed / (WINDOW_SECONDS / MAX_RPM))
+                tokens_to_add = int(elapsed / (WINDOW_SECONDS / settings.LLM_MAX_RPM))
 
                 if tokens_to_add > 0:
-                    tokens = min(MAX_RPM, tokens + tokens_to_add)
+                    tokens = min(settings.LLM_MAX_RPM, tokens + tokens_to_add)
                     last_refill = now
 
                 if tokens > 0:
@@ -229,76 +243,68 @@ def wait_for_token() -> None:
                     pipe.execute()
                     return   # Token acquired — proceed with API call
                 else:
-                    # No tokens — wait one token interval before retrying
-                    sleep_secs = (WINDOW_SECONDS / MAX_RPM) - elapsed % (WINDOW_SECONDS / MAX_RPM)
+                    sleep_secs = (WINDOW_SECONDS / settings.LLM_MAX_RPM) - elapsed % (WINDOW_SECONDS / settings.LLM_MAX_RPM)
                     time.sleep(max(0.5, sleep_secs))
             except redis_lib.WatchError:
                 continue   # Another worker modified the keys — retry
 
 
-def check_daily_quota() -> None:
-    """
-    Raises an exception if the daily quota is exhausted.
-    Job stays in queue and will retry the next day.
-    """
-    daily_limit = int(settings.OPENAI_DAILY_QUOTA)
-    today = time.strftime("%Y-%m-%d")
+def is_daily_quota_exhausted() -> bool:
+    """Non-mutating check. Returns True if daily quota limit is reached."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"{DAILY_COUNT_KEY_PREFIX}{today}"
+    count = int(redis_client.get(key) or 0)
+    return count >= settings.LLM_DAILY_QUOTA
+
+
+def record_llm_request() -> None:
+    """Increments the daily request counter and sets TTL to end of day."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"{DAILY_COUNT_KEY_PREFIX}{today}"
     count = redis_client.incr(key)
     if count == 1:
-        redis_client.expire(key, 86_400)   # Expire at end of day
-    if count > daily_limit:
-        raise RuntimeError(
-            f"DAILY_QUOTA_EXCEEDED: {count}/{daily_limit} OpenAI requests used today. "
-            "Task will retry tomorrow."
-        )
+        redis_client.expire(key, 86_400)
 ```
 
 ---
 
-## 5. OpenAI Client (`services/llm_client.py`)
+## 5. LLM Provider Architecture (`services/llm_factory.py` & `services/providers/`)
+
+The parser worker implements a pluggable provider factory supporting **OpenAI**, **Anthropic**, and **Google AI**. The active provider is configured via `LLM_PROVIDER` in settings (`openai`, `anthropic`, or `google`).
 
 ```python
-import json
-import httpx
+# services/llm-parser-worker/app/services/llm_factory.py
 from app.config import settings
-from app.services.rate_limiter import wait_for_token, check_daily_quota
+from app.services.providers.base import BaseLLMClient
+from app.services.providers.openai_provider import OpenAIClient
+from app.services.providers.anthropic_provider import AnthropicClient
+from app.services.providers.google_provider import GoogleAIClient
 
 
-class OpenAIClient:
-    def generate_json(self, system_prompt: str, user_prompt: str) -> str:
-        """
-        Blocks until a rate limit token is available, then calls the OpenAI Chat Completions API.
-        Returns the raw JSON string from the model.
-        """
-        check_daily_quota()   # Raises if daily limit hit
-        wait_for_token()      # Blocks until RPM token available
-
-        try:
-            response = httpx.post(
-                f"{settings.OPENAI_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-                json={
-                    "model": settings.OPENAI_MODEL,
-                    "temperature": 0.1,
-                    "response_format": {"type": "json_object"},
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                },
-                timeout=60.0,
-            )
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                raise RuntimeError(f"RATE_LIMIT: {e}")
-            raise
+def get_llm_client() -> BaseLLMClient:
+    """Instantiate and return the configured LLM provider client."""
+    provider = settings.LLM_PROVIDER.lower().strip()
+    if provider == "openai":
+        return OpenAIClient(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_MODEL,
+            base_url=settings.OPENAI_BASE_URL,
+        )
+    elif provider == "anthropic":
+        return AnthropicClient(
+            api_key=settings.ANTHROPIC_API_KEY,
+            model=settings.ANTHROPIC_MODEL,
+        )
+    elif provider == "google":
+        return GoogleAIClient(
+            api_key=settings.GOOGLE_API_KEY,
+            model=settings.GOOGLE_MODEL,
+        )
+    raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
-llm_client = OpenAIClient()
+llm_client = get_llm_client()
+```
 ```
 
 ---
@@ -552,7 +558,7 @@ class DemographicSnapshot(BaseModel):
 
 class LlmOutput(BaseModel):
     """
-    Pydantic v2 model enforcing the exact structure expected from the OpenAI response.
+    Pydantic v2 model enforcing the exact structure expected from the LLM response.
     model_config strict=True rejects any extra keys the LLM might add.
     """
     model_config = {"strict": True, "extra": "forbid"}
@@ -635,7 +641,7 @@ CMD ["celery", "-A", "app.celery_app", "worker",
      "--loglevel", "info"]
 ```
 
-> Worker concurrency is fixed at 2 for the LLM parser — the Redis token bucket controls actual OpenAI API throughput, so more workers just means more threads waiting on the rate limiter.
+> Worker concurrency is fixed at 2 for the LLM parser — the Redis token bucket controls actual LLM provider API throughput, so more workers just means more threads waiting on the rate limiter.
 
 > In production, one pod is started with `--beat` appended to embed the Celery Beat scheduler:
 > ```bash

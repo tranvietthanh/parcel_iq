@@ -125,14 +125,16 @@ uv run pytest tests/ -v --cov=app
 # Unit tests (fast, no LLM calls)
 uv run pytest tests/unit/ -v
 
-# Integration tests (mocked Gemini)
+# Integration tests (mocked LLM provider)
 uv run pytest tests/integration/ -v
 
 # Specific test
 uv run pytest tests/unit/test_confidence.py::test_high_confidence -v
 
-# Run with live Gemini verification (if GEMINI_API_KEY set)
-GEMINI_API_KEY=your-key uv run python scripts/verify_gemini_live.py
+# Run with live provider verification
+uv run python scripts/verify_llm_live.py --provider openai
+# Or: uv run python scripts/verify_llm_live.py --provider anthropic
+# Or: uv run python scripts/verify_llm_live.py --provider google
 ```
 
 **Key test files:**

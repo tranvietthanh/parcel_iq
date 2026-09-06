@@ -1,4 +1,4 @@
-"""System prompt for the Gemini structured extraction model.
+"""System prompt for the structured extraction model.
 
 This prompt is sent with every API call and sets the extraction rules.
 Source: docs/06-llm-parser-worker.md §6

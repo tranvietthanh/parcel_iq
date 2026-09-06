@@ -1,6 +1,6 @@
 """Pydantic v2 model for the structured LLM output.
 
-Enforces the JSON schema expected from the LLM API (OpenAI).
+Enforces the JSON schema expected from the configured LLM provider.
 Used by the LLM Parser Worker (writes) and Public API (reads + serves).
 
 Schema source: docs/06-llm-parser-worker.md §7
@@ -183,7 +183,7 @@ class Education(BaseModel):
 
 
 class LlmOutput(BaseModel):
-    """Pydantic v2 model enforcing the exact structure expected from Gemini.
+    """Pydantic v2 model enforcing the exact structure expected from the LLM.
 
     model_config strict=True rejects any extra keys the LLM might add.
     """

@@ -1,7 +1,7 @@
 ---
 phase: 7
 title: "Sync Docs to Implementation"
-status: pending
+status: completed
 priority: P2
 effort: "1d"
 dependencies: [2, 3, 4, 5, 6]
@@ -76,12 +76,12 @@ step-1 grep to surface them mid-phase.
 
 ## Success Criteria
 
-- [ ] `grep -rn "Gemini\|NVIDIA"` across the repo returns no hits implying either is the sole/default provider (historical mentions in this plan's own files are fine).
-- [ ] `AGENTS.md`'s LLM worker description matches the real factory pattern.
-- [ ] `AGENTS.md`'s `review_flag` row reads as a standing decision, not an open bug.
-- [ ] A data-gap note for `crime_density`/`estimated_value`/`estimated_rent` exists somewhere discoverable (AGENTS.md and/or docs/04-database.md).
-- [ ] `docs/06-llm-parser-worker.md` accurately describes rate limiting as actually enforced (true post-Phase-3).
-- [ ] No doc file exceeds 800 LOC.
+- [x] `grep -rn "Gemini\|NVIDIA"` across the repo returns no hits implying either is the sole/default provider (historical mentions in this plan's own files are fine).
+- [x] `AGENTS.md`'s LLM worker description matches the real factory pattern.
+- [x] `AGENTS.md`'s `review_flag` row reads as a standing decision, not an open bug.
+- [x] A data-gap note for `crime_density`/`estimated_value`/`estimated_rent` exists somewhere discoverable (AGENTS.md and/or docs/04-database.md).
+- [x] `docs/06-llm-parser-worker.md` accurately describes rate limiting as actually enforced (true post-Phase-3).
+- [x] No doc file exceeds 800 LOC.
 
 ## Risk Assessment
 

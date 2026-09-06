@@ -167,7 +167,7 @@ gnaf_addresses / properties
         │  raw_scraped_data stored in property_reports
         ▼  [Celery task: parse_with_llm → llm_processing_queue]
 ┌────────────────────────────┐
-│  LLM Parser (OpenAI)       │
+│  LLM Parser Worker         │
 │  Pydantic v2 validation    │
 │  Confidence scoring        │
 │  Email notification        │
@@ -263,7 +263,7 @@ gnaf_addresses / properties
 
 ---
 
-### What the LLM Extracts (OpenAI Chat Completions)
+### What the LLM Extracts (Structured LLM Pipeline)
 
 The LLM receives the merged raw scrape as a structured prompt and returns validated JSON:
 

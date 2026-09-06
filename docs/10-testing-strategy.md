@@ -352,7 +352,7 @@ describe('triggerScrape Server Action', () => {
 
 ### 4.3 Celery Task Integration Tests
 
-Test full task execution (scrape → parse pipeline) against a real Redis broker (testcontainers) and real Postgres, with Playwright and Gemini API mocked.
+Test full task execution (scrape → parse pipeline) against a real Redis broker (testcontainers) and real Postgres, with Playwright and the LLM provider API mocked.
 
 ```python
 # services/scraper-worker/tests/integration/test_scrape_task.py

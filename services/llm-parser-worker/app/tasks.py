@@ -1,7 +1,7 @@
 """Celery tasks for the LLM parser worker.
 
 Main task: :func:`parse_with_llm` — takes raw scraped data from a property
-report, sends it to Gemini for structured extraction, validates with
+report, sends it to the configured LLM provider for structured extraction, validates with
 Pydantic v2, scores confidence, and upserts results.
 
 Scheduled tasks: :func:`trigger_state_refresh` (monthly per state),

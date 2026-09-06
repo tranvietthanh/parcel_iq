@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "PDF Report Data Enrichment"
-status: pending
+status: completed
 priority: P2
 effort: "2.5d"
 dependencies: []
@@ -186,14 +186,14 @@ cost matters.)
 
 ## Success Criteria
 
-- [ ] A full report PDF for a property whose `llm_parsed_insights.infrastructure` is non-empty shows an "Infrastructure" section listing each item.
-- [ ] A property with a non-null `risk_factors.flood.detail` shows that text under the Flood Risk row **in the full PDF only** — the lite PDF for the same property shows no detail text.
-- [ ] A property with a non-null `zoning_and_planning.conflict_note` shows it as a callout in the full PDF's Zoning & Planning section; the lite PDF omits it. `epi_type` appears in both.
-- [ ] A property whose LLM-authored text contains `&`, `<`, `>`, or an unbalanced tag still generates a valid PDF in both variants (new regression test).
-- [ ] A property with empty/null infrastructure still renders a clean "No nearby infrastructure data available." placeholder, not a broken/empty page.
-- [ ] A property whose PDF was already cached in MinIO before this phase shipped shows the new sections on its next download (proves the cache-key version bump works), without requiring any manual cache-clear step.
-- [ ] `services/public-api` and `services/admin-backend` Docker builds succeed against the regenerated lockfiles.
-- [ ] `uv run pytest shared/pdf-renderer/tests/ -v` passes (new test suite — first one this module has ever had).
+- [x] A full report PDF for a property whose `llm_parsed_insights.infrastructure` is non-empty shows an "Infrastructure" section listing each item.
+- [x] A property with a non-null `risk_factors.flood.detail` shows that text under the Flood Risk row **in the full PDF only** — the lite PDF for the same property shows no detail text.
+- [x] A property with a non-null `zoning_and_planning.conflict_note` shows it as a callout in the full PDF's Zoning & Planning section; the lite PDF omits it. `epi_type` appears in both.
+- [x] A property whose LLM-authored text contains `&`, `<`, `>`, or an unbalanced tag still generates a valid PDF in both variants (new regression test).
+- [x] A property with empty/null infrastructure still renders a clean "No nearby infrastructure data available." placeholder, not a broken/empty page.
+- [x] A property whose PDF was already cached in MinIO before this phase shipped shows the new sections on its next download (proves the cache-key version bump works), without requiring any manual cache-clear step.
+- [x] `services/public-api` and `services/admin-backend` Docker builds succeed against the regenerated lockfiles.
+- [x] `uv run pytest shared/pdf-renderer/tests/ -v` passes (new test suite — first one this module has ever had).
 
 ## Risk Assessment
 

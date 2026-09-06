@@ -86,6 +86,11 @@ CREATE TABLE properties (
     updated_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Note on Known Data Gaps:
+-- `estimated_value` and `estimated_rent` on `properties`, as well as `crime_density`
+-- in `risk_factors` (JSONB), are known external data gaps. No adapter currently scrapes
+-- or computes them. Their absence in ingested records is expected behavior, not a bug.
+
 CREATE INDEX idx_properties_geom       ON properties USING GiST (geom);
 CREATE INDEX idx_properties_parcel     ON properties USING GiST (parcel_geom);
 CREATE INDEX idx_properties_fts        ON properties USING GIN (address_tokens);

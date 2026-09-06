@@ -113,7 +113,7 @@ Full setup guide: [`docs/09-local-dev.md`](docs/09-local-dev.md)
 | Database | PostgreSQL 16 + PostGIS 3.4 |
 | Auth | Clerk (two instances) |
 | Scraping | Playwright (Python) |
-| LLM | Provider-configurable worker (Gemini / NVIDIA / OpenAI-compatible) |
+| LLM | Provider-configurable worker (OpenAI / Anthropic / Google AI) |
 | Observability | Grafana Loki + structlog |
 | Object storage | MinIO (S3-compatible) |
 | Deployment | K3s (manifests under infra/k8s) |

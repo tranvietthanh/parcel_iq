@@ -54,7 +54,7 @@ apps/admin-web/           Admin Next.js app (Clerk admin, Server Actions only)
 services/public-api/      FastAPI — internet-facing, Clerk JWT verification (port 8080)
 services/admin-backend/   FastAPI — internal only, X-Service-Token verification (port 8082)
 services/scraper-worker/  Celery workers + Playwright adapters
-services/llm-parser-worker/ Celery workers + LLM (Gemini or NVIDIA via factory pattern)
+services/llm-parser-worker/ Celery workers + LLM (OpenAI, Anthropic, Google via factory pattern)
 
 shared/db-migrations/     Alembic — single source of truth for schema
 shared/py-types/          Shared Pydantic models used across Python services
@@ -216,7 +216,7 @@ All specifications are in `docs/`:
 - `03-api-gateway.md` — Public API endpoints and contracts
 - `04-database.md` — Full DDL, indexes, JSONB schemas
 - `05-scraper-worker.md` — Adapter pattern, national scrape strategy
-- `06-llm-parser-worker.md` — LLM provider config (Gemini/NVIDIA), confidence scoring
+- `06-llm-parser-worker.md` — LLM provider config (OpenAI/Anthropic/Google factory), confidence scoring
 - `07-legal-compliance.md` — AFSL risk, disclaimers, scraping compliance
 - `08-admin-console.md` — Admin app, Server Actions, Admin Backend API
 - `09-local-dev.md` — Full local dev setup and debugging guide
@@ -236,7 +236,8 @@ All specifications are in `docs/`:
 | Adding `password_hash` or `role` column to `users` table | Clerk owns auth; users table stores only `clerk_user_id` |
 | Creating a new Alembic migration without running existing ones first | Will cause conflicts; always `alembic upgrade head` before `revision --autogenerate` |
 | Using `npm` or `yarn` in any JS context | This repo uses `pnpm` exclusively |
-| Re-introducing a `review_flag` / manual review queue without a product+legal decision | The low-confidence manual-review workflow was intentionally removed in migration `023_on_demand_property_ingestion` (status collapsed to QUEUING/PROCESSING/READY/FAILED). The LLM worker now marks reports READY directly and stores `overall_confidence` for display only. If a review gate is needed again, treat it as a legal-compliance change (see `docs/07-legal-compliance.md`), not a quick edit |
+| Re-introducing a `review_flag` / manual review queue without a product+legal decision | The low-confidence manual-review workflow was intentionally removed in migration `023_on_demand_property_ingestion` (status collapsed to QUEUING/PROCESSING/READY/FAILED). Its removal is a standing architectural decision, not an open bug to fix. The LLM worker marks reports READY directly and stores `overall_confidence` for display only. If a review gate is ever needed again, it is a separate, not-yet-scheduled product and legal-compliance decision (see `docs/07-legal-compliance.md`), not a quick code edit. |
+| Treating missing crime density or valuations as a pipeline bug | `risk_factors.crime_density`, `properties.estimated_value`, and `properties.estimated_rent` are known external data gaps with no adapter or data source currently connected in the pipeline. Do not attempt to "fix" or expect non-null values for them until a data source is integrated. |
 | Importing from one app into another | `apps/public-web` and `apps/admin-web` are independent — no cross-imports |
 | Setting `FLOWER_BASIC_AUTH` | Flower auth is handled by the Admin Backend API proxy layer; Flower itself has no auth |
 | Activating venvs manually (`source .venv/bin/activate`) | Use `uv run` instead — it auto-selects the correct local `.venv/` |
