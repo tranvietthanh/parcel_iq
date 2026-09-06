@@ -471,6 +471,10 @@ kubectl logs -n cert-manager deploy/cert-manager --tail=50
 #
 # 3. Certificate stuck in "Issuing" → Traefik not routing ACME challenge
 #    Fix: kubectl get ingress -A — ensure no conflicting IngressRoutes
+#
+# 4. HTTP-01 self-check timeout ("Client.Timeout exceeded while awaiting headers")
+#    Cause: Cluster is behind external public IP without hairpin NAT. cert-manager cannot reach public IP from pods.
+#    Fix: Configure split-horizon DNS in coredns-custom (kube-system) mapping ozpropertyreport.com to node LAN IPs (192.168.10.185-187).
 ```
 
 ### Connectivity Issues

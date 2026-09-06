@@ -331,9 +331,20 @@ function SavedTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<{ items: SavedProperty[] }>("/api/saved")
-      .then((res) => setSaved(res.items))
-      .catch(console.error)
+    api.get<SavedProperty[] | { items: SavedProperty[] }>("/api/saved")
+      .then((res) => {
+        if (Array.isArray(res)) {
+          setSaved(res);
+        } else if (res && Array.isArray((res as { items?: SavedProperty[] }).items)) {
+          setSaved((res as { items: SavedProperty[] }).items);
+        } else {
+          setSaved([]);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load saved properties", err);
+        setSaved([]);
+      })
       .finally(() => setLoading(false));
   }, [api]);
 
@@ -345,7 +356,7 @@ function SavedTab() {
     );
   }
 
-  if (saved.length === 0) {
+  if (!saved || saved.length === 0) {
     return (
       <div className="py-16 text-center">
         <p className="text-zinc-500 dark:text-zinc-400">No saved properties yet.</p>

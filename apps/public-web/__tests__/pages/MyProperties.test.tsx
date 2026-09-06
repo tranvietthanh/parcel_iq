@@ -132,4 +132,61 @@ describe("MyPropertiesPage RequestedTab", () => {
       expect(screen.getByText("View →")).toBeInTheDocument();
     });
   });
+
+  it("renders saved properties tab when switched to saved tab with array response", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes("/api/properties/my/requested")) {
+        return Promise.resolve({
+          items: [],
+          pagination: { page: 1, page_size: 20, total_count: 0, total_pages: 0 },
+        });
+      }
+      if (url.includes("/api/saved")) {
+        return Promise.resolve([
+          {
+            id: "saved-1",
+            address: "10, EXAMPLE STREET, RICHMOND, VIC 3121",
+            state: "VIC",
+            slug: "10-example-street-richmond-vic-3121",
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<MyPropertiesPage />);
+
+    const savedTabBtn = screen.getByRole("button", { name: "Saved" });
+    fireEvent.click(savedTabBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("10, EXAMPLE STREET, RICHMOND, VIC 3121")).toBeInTheDocument();
+      expect(screen.getByText("View →")).toBeInTheDocument();
+    });
+  });
+
+  it("renders empty saved properties state without crashing", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes("/api/properties/my/requested")) {
+        return Promise.resolve({
+          items: [],
+          pagination: { page: 1, page_size: 20, total_count: 0, total_pages: 0 },
+        });
+      }
+      if (url.includes("/api/saved")) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<MyPropertiesPage />);
+
+    const savedTabBtn = screen.getByRole("button", { name: "Saved" });
+    fireEvent.click(savedTabBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("No saved properties yet.")).toBeInTheDocument();
+    });
+  });
 });
+
